@@ -586,12 +586,15 @@ new Chart(document.getElementById('chartFyrClas'), {
 });
 const _zt = FYR['TOTAL'];
 new Chart(document.getElementById('chartFyrZona'), {
-  type: 'pie',
-  data: { labels: ['Urbana', 'Rural'], datasets: [{ data: [_zt.n[0], _zt.n[1]], backgroundColor: ['#D9CF43', '#1E7A1E'] }] },
-  options: { responsive: true,
-    plugins: { legend: LEG, rotuloPie: { fmt: fmtN },
-      tooltip: { callbacks: { label: (c) => ' ' + c.label + ': ' + fmtN(c.parsed) + ' cuentas' } } } },
-  plugins: [rotuloPie, tachaLeyenda]
+  type: 'bar',
+  data: { labels: ['Urbana', 'Rural'], datasets: [{
+    label: 'Cuentas', data: [_zt.n[0], _zt.n[1]],
+    backgroundColor: ['#D9CF43', '#1E7A1E'] }] },
+  options: { responsive: true, scales: { y: { beginAtZero: true } },
+    plugins: { legend: { display: false },
+      tooltip: { callbacks: { label: (c) => ' ' + fmtN(c.parsed.y) + ' cuentas' } },
+      rotuloBarras: { fmt: fmtN } } },
+  plugins: [rotuloBarras]
 });
 new Chart(document.getElementById('chartFyrFactRec'), {
   type: 'bar',
