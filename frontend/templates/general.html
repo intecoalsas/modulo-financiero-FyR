@@ -29,6 +29,42 @@
       </div>
     </div>
 
+    <!-- KPIs iniciales: 4 tarjetas con valores completos -->
+    <div class="row g-3 mb-4">
+      <div class="col-md-3">
+        <div class="card border-0 shadow text-bg-primary">
+          <div class="card-body text-center">
+            <div class="fs-5 fw-bold">${{ "{:,.0f}".format(data.f.total_imp).replace(",", ".") }}</div>
+            <small>Facturación</small>
+          </div>
+        </div>
+      </div>
+      <div class="col-md-3">
+        <div class="card border-0 shadow text-bg-success">
+          <div class="card-body text-center">
+            <div class="fs-5 fw-bold">${{ "{:,.0f}".format(data.r.total_valor).replace(",", ".") }}</div>
+            <small>Recaudo</small>
+          </div>
+        </div>
+      </div>
+      <div class="col-md-3">
+        <div class="card border-0 shadow text-bg-warning">
+          <div class="card-body text-center">
+            <div class="fs-5 fw-bold">${{ "{:,.0f}".format(data.f.total_consumo).replace(",", ".") }}</div>
+            <small>Valor Consumo</small>
+          </div>
+        </div>
+      </div>
+      <div class="col-md-3">
+        <div class="card border-0 shadow" style="background:#6f42c1">
+          <div class="card-body text-center text-white">
+            <div class="fs-5 fw-bold">{% if saldo_favor is not none %}${{ "{:,.0f}".format(saldo_favor or 0).replace(",", ".") }}{% else %}—{% endif %}</div>
+            <small>Cartera (cartera recuperada)</small>
+          </div>
+        </div>
+      </div>
+    </div>
+
     {% if es_emsa %}
     <!-- ===== Informe estilo hoja FyR (Villavicencio/EMSA) ===== -->
     {% set _t = fyr["TOTAL"] %}
@@ -157,40 +193,6 @@
     </div>
 
     {% else %}
-    <div class="row g-3 mb-4">
-      <div class="col-md-3">
-        <div class="card border-0 shadow text-bg-primary">
-          <div class="card-body text-center">
-            <div class="fs-4 fw-bold">${{ "{:,.0f}".format(data.f.total_imp).replace(",", ".") }}</div>
-            <small>Imp. Alumbrado Público</small>
-          </div>
-        </div>
-      </div>
-      <div class="col-md-3">
-        <div class="card border-0 shadow text-bg-success">
-          <div class="card-body text-center">
-            <div class="fs-4 fw-bold">${{ "{:,.0f}".format(data.f.total_consumo).replace(",", ".") }}</div>
-            <small>Consumo Energía</small>
-          </div>
-        </div>
-      </div>
-      <div class="col-md-3">
-        <div class="card border-0 shadow text-bg-info">
-          <div class="card-body text-center">
-            <div class="fs-4 fw-bold">{{ "{:,.0f}".format(data.f.total_kwh).replace(",", ".") }}</div>
-            <small>Consumo Total (kWh)</small>
-          </div>
-        </div>
-      </div>
-      <div class="col-md-3">
-        <div class="card border-0 shadow text-bg-warning">
-          <div class="card-body text-center">
-            <div class="fs-4 fw-bold">${{ "{:,.0f}".format(data.r.total_valor).replace(",", ".") }}</div>
-            <small>Recaudo A.P.</small>
-          </div>
-        </div>
-      </div>
-    </div>
 
     <!-- Estadísticas Generales + Banderas -->
     <div class="row g-4 mb-4">

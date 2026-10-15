@@ -752,11 +752,20 @@ def general_id(report_id):
     DATA["general"] = general_data
     es_emsa, fyr, fyr_orden = _contexto_fyr(
         report.municipio_nombre, report.comercializadora_nombre, general_data)
+    # Saldo a favor de la cartera del año del informe (tarjeta inicial "Cartera")
+    saldo_favor = None
+    if report.comercializadora:
+        cartera_rep = get_cartera(report.comercializadora, report.anio)
+        if cartera_rep:
+            saldo_favor = (cartera_rep.get("total_favor") or {}).get(str(report.anio))
+            if saldo_favor is None:
+                saldo_favor = (cartera_rep.get("total_favor") or {}).get("total")
     return render_template("general.html", data=general_data, report_id=report_id,
                            municipio=report.municipio_nombre,
                            comercializadora=report.comercializadora_nombre,
                            periodo=f"{report.mes_nombre} {report.anio}",
-                           es_emsa=es_emsa, fyr=fyr, fyr_orden=fyr_orden)
+                           es_emsa=es_emsa, fyr=fyr, fyr_orden=fyr_orden,
+                           saldo_favor=saldo_favor)
 
 
 # Página del informe de especiales (usando el último reporte guardado)
