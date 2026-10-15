@@ -667,6 +667,7 @@ if (ACC_REF){
 function fmtN(n){ return Math.round(n).toLocaleString('es-CO'); }
 function fmtCorto(n){
   const a = Math.abs(n);
+  if (a >= 1e9) return '$' + (n/1e9).toLocaleString('es-CO',{maximumFractionDigits:1}) + 'B';
   if (a >= 1e6) return '$' + (n/1e6).toLocaleString('es-CO',{maximumFractionDigits:1}) + 'M';
   if (a >= 1e3) return '$' + (n/1e3).toLocaleString('es-CO',{maximumFractionDigits:0}) + 'm';
   return '$' + fmtN(n);
@@ -675,7 +676,14 @@ const fmtFull = n => '$' + fmtN(n);
 
 function alternarPorcion(e, item, legend) {
   const chart = legend.chart;
-  chart.toggleDataVisibility(item.index);
+  if (item.datasetIndex != null) {
+    // Gráfica de líneas: oculta/muestra la serie completa
+    const i = item.datasetIndex;
+    chart.setDatasetVisibility(i, !chart.isDatasetVisible(i));
+  } else {
+    // Gráficas de torta: oculta/muestra un sector
+    chart.toggleDataVisibility(item.index);
+  }
   chart.update();
 }
 
@@ -748,7 +756,7 @@ if (document.getElementById('chartAnGral')){
       legend:{position:'top', onClick:alternarPorcion},
       tooltip:{callbacks:{label:(c)=>' '+c.dataset.label+': '+fmtFull(c.parsed.y)}}
     }, scales:{
-      y:{ticks:{stepSize:400000, callback:(v)=>fmtCorto(v)}}
+      y:{ticks:{stepSize:400000000, callback:(v)=>fmtCorto(v)}}
     }},
     plugins:[tachaLeyenda]
   });
