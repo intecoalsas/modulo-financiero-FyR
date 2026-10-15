@@ -1381,3 +1381,76 @@ def eliminar_reporte(report_id):
     db.session.commit()
     flash("Reporte eliminado correctamente.", "success")
     return redirect(url_for("main.historial"))
+
+
+# ---- Clientes Especiales (gestión desde BD) ----
+
+@bp.route("/clientes-especiales")
+def clientes_especiales():
+    from models import ClienteEspecial
+    clientes = ClienteEspecial.query.filter_by(activo=True).order_by(
+        ClienteEspecial.grupo, ClienteEspecial.nombre).all()
+    return render_template("clientes_especiales.html", clientes=clientes)
+
+
+@bp.route("/clientes-especiales/guardar", methods=["POST"])
+def clientes_especiales_guardar():
+    from models import ClienteEspecial
+    id_cuenta = request.form.get("id_cuenta", "").strip()
+    if not id_cuenta:
+        flash("El ID de cuenta es obligatorio.", "danger")
+        return redirect(url_for("main.clientes_especiales"))
+    existente = ClienteEspecial.query.filter_by(id_cuenta=id_cuenta).first()
+    if existente:
+        existente.nombre = request.form.get("nombre", "").strip()
+        existente.grupo = request.form.get("grupo", "").strip()
+        existente.tarifa_min = float(request.form.get("tarifa_min") or 0)
+        existente.consumo = float(request.form.get("consumo") or 0)
+        existente.periodicidad = request.form.get("periodicidad", "Mensual")
+        existente.activo = request.form.get("activo") == "1"
+        flash("Cliente especial actualizado.", "success")
+    else:
+        nuevo = ClienteEspecial(
+            id_cuenta=id_cuenta,
+            nombre=request.form.get("nombre", "").strip(),
+            grupo=request.form.get("grupo", "").strip(),
+            tarifa_min=float(request.form.get("tarifa_min") or 0),
+            consumo=float(request.form.get("consumo") or 0),
+            periodicidad=request.form.get("periodicidad", "Mensual"),
+            activo=True,
+        )
+        db.session.add(nuevo)
+        flash("Cliente especial creado.", "success")
+    db.session.commit()
+    _auditar("guardar_cliente_especial", id_cuenta)
+    return redirect(url_for("main.clientes_especiales"))
+
+
+@bp.route("/clientes-especiales/eliminar/<int:cliente_id>", methods=["POST"])
+def clientes_especiales_eliminar(cliente_id):
+    from models import ClienteEspecial
+    cliente = ClienteEspecial.query.get_or_404(cliente_id)
+    db.session.delete(cliente)
+    db.session.commit()
+    _auditar("eliminar_cliente_especial", cliente.id_cuenta)
+    flash("Cliente especial eliminado.", "success")
+    return redirect(url_for("main.clientes_especiales"))
+
+
+@bp.route("/clientes-especiales/seed", methods=["POST"])
+def clientes_especiales_seed():
+    """Carga la lista hardcodeada inicial si la tabla está vacía."""
+    from models import ClienteEspecial
+    if ClienteEspecial.query.count() > 0:
+        flash("Ya existen clientes especiales en la base de datos.", "warning")
+        return redirect(url_for("main.clientes_especiales"))
+    from core.core import ESPECIALES
+    for idc, nombre, grupo, tarifa, consumo, _fact, _rec, periodo in ESPECIALES:
+        db.session.add(ClienteEspecial(
+            id_cuenta=idc, nombre=nombre, grupo=grupo,
+            tarifa_min=tarifa, consumo=consumo, periodicidad=periodo, activo=True,
+        ))
+    db.session.commit()
+    _auditar("seed_clientes_especiales", f"{len(ESPECIALES)} clientes cargados")
+    flash(f"{len(ESPECIALES)} clientes especiales cargados desde la lista inicial.", "success")
+    return redirect(url_for("main.clientes_especiales"))

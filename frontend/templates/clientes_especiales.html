@@ -1,0 +1,123 @@
+{% extends "base.html" %}
+{% block titulo %}Clientes Especiales — Informes F&amp;R{% endblock %}
+
+{% block contenido %}
+<div class="row justify-content-center">
+  <div class="col-lg-12">
+    <div class="d-flex justify-content-between align-items-center mb-4">
+      <h2><i class="bi bi-star-fill text-warning"></i> Clientes Especiales</h2>
+      <div>
+        <form method="POST" action="{{ url_for('main.clientes_especiales_seed') }}" class="d-inline">
+          <button type="submit" class="btn btn-outline-success">
+            <i class="bi bi-database-add"></i> Cargar lista inicial
+          </button>
+        </form>
+        <a href="{{ url_for('main.clientes_especiales') }}" class="btn btn-outline-primary">
+          <i class="bi bi-arrow-clockwise"></i> Actualizar
+        </a>
+      </div>
+    </div>
+
+    <div class="card shadow-sm">
+      <div class="card-body p-0">
+        <div class="table-responsive">
+          <table class="table table-striped table-hover mb-0">
+            <thead class="table-dark">
+              <tr>
+                <th>ID Cuenta</th>
+                <th>Nombre</th>
+                <th>Grupo</th>
+                <th>Tarifa Mínima</th>
+                <th>Consumo</th>
+                <th>Periodicidad</th>
+                <th>Acciones</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for c in clientes %}
+              <tr>
+                <td><code>{{ c.id_cuenta }}</code></td>
+                <td>{{ c.nombre }}</td>
+                <td><span class="badge bg-secondary">{{ c.grupo }}</span></td>
+                <td>{{ "{:,.0f}".format(c.tarifa_min) }}</td>
+                <td>{{ "{:,.0f}".format(c.consumo) }}</td>
+                <td>{{ c.periodicidad }}</td>
+                <td>
+                  <button class="btn btn-sm btn-outline-primary" data-bs-toggle="modal"
+                          data-bs-target="#editModal{{ c.id }}">
+                    <i class="bi bi-pencil"></i>
+                  </button>
+                  <form method="POST" action="{{ url_for('main.clientes_especiales_eliminar', cliente_id=c.id) }}" class="d-inline">
+                    <button type="submit" class="btn btn-sm btn-outline-danger">
+                      <i class="bi bi-trash"></i>
+                    </button>
+                  </form>
+                </td>
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+{% for c in clientes %}
+<div class="modal fade" id="editModal{{ c.id }}" tabindex="-1">
+  <div class="modal-dialog">
+    <div class="modal-content">
+      <form method="POST" action="{{ url_for('main.clientes_especiales_guardar') }}">
+        <div class="modal-header">
+          <h5 class="modal-title">Editar Cliente Especial</h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+        </div>
+        <div class="modal-body">
+          <input type="hidden" name="id_cuenta" value="{{ c.id_cuenta }}">
+          <div class="mb-3">
+            <label class="form-label">ID Cuenta</label>
+            <input type="text" class="form-control" value="{{ c.id_cuenta }}" disabled>
+          </div>
+          <div class="mb-3">
+            <label class="form-label">Nombre</label>
+            <input type="text" name="nombre" class="form-control" value="{{ c.nombre }}" required>
+          </div>
+          <div class="row">
+            <div class="col-md-6 mb-3">
+              <label class="form-label">Grupo</label>
+              <input type="text" name="grupo" class="form-control" value="{{ c.grupo }}" required>
+            </div>
+            <div class="col-md-6 mb-3">
+              <label class="form-label">Tarifa Mínima</label>
+              <input type="number" name="tarifa_min" class="form-control" value="{{ c.tarifa_min }}" required>
+            </div>
+          </div>
+          <div class="row">
+            <div class="col-md-6 mb-3">
+              <label class="form-label">Consumo</label>
+              <input type="number" name="consumo" class="form-control" value="{{ c.consumo }}" required>
+            </div>
+            <div class="col-md-6 mb-3">
+              <label class="form-label">Periodicidad</label>
+              <select name="periodicidad" class="form-select">
+                {% for p in ["Mensual", "Bimestral Impar", "Bimestral Par"] %}
+                <option value="{{ p }}" {{ "selected" if c.periodicidad == p }}>{{ p }}</option>
+                {% endfor %}
+              </select>
+            </div>
+          </div>
+          <div class="form-check">
+            <input type="checkbox" name="activo" value="1" class="form-check-input" id="activo{{ c.id }}" {{ "checked" if c.activo }}>
+            <label class="form-check-label" for="activo{{ c.id }}">Activo</label>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+          <button type="submit" class="btn btn-primary">Guardar</button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+{% endfor %}
+{% endblock %}

@@ -167,3 +167,24 @@ class Auditoria(db.Model):
 
     def __repr__(self):
         return f"<Auditoria {self.accion} {self.fecha}>"
+
+
+# Cliente especial editable desde la interfaz (reemplaza la lista hardcodeada)
+class ClienteEspecial(db.Model):
+    __tablename__ = "clientes_especiales"
+
+    id = db.Column(db.Integer, primary_key=True)
+    id_cuenta = db.Column(db.String(50), nullable=False, unique=True)
+    nombre = db.Column(db.String(300), nullable=False)
+    grupo = db.Column(db.String(100), nullable=False)
+    tarifa_min = db.Column(db.Float, default=0.0)
+    consumo = db.Column(db.Float, default=0.0)
+    periodicidad = db.Column(db.String(50), default="Mensual")
+    activo = db.Column(db.Boolean, default=True)
+
+    def to_tuple(self):
+        return (self.id_cuenta, self.nombre, self.grupo, self.tarifa_min,
+                self.consumo, 0, 0, self.periodicidad)
+
+    def __repr__(self):
+        return f"<ClienteEspecial {self.id_cuenta} {self.nombre}>"
