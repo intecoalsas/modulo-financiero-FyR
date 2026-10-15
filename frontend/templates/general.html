@@ -132,21 +132,6 @@
       </div>
     </div>
 
-    <!-- Notas -->
-    <div class="card border-0 shadow-sm mb-4">
-      <div class="card-body">
-        <h6 class="fw-bold">Notas:</h6>
-        <ul class="mb-0 small">
-          <li>Fuente: archivos de facturación y recaudo del periodo {{ periodo }} ({{ "{:,.0f}".format(_nt).replace(",", ".") }} cuentas procesadas).</li>
-          <li>Base gravable = valor del consumo de energía de cada cuenta.</li>
-          <li>"Otros" agrupa las cuentas que no clasifican como Residencial, Comercial, Oficial o Industrial.</li>
-          {% if _rt > _ft %}
-          <li>El recaudo total (${{ "{:,.0f}".format(_rt).replace(",", ".") }}) supera la facturación (${{ "{:,.0f}".format(_ft).replace(",", ".") }}) por pagos de periodos anteriores u otros conceptos.</li>
-          {% endif %}
-        </ul>
-      </div>
-    </div>
-
     <!-- Gráficas hoja FyR -->
     <div class="row g-4 mb-4">
       <div class="col-lg-6">
