@@ -1,0 +1,914 @@
+{% extends "base.html" %}
+{% block titulo %}Información de Referencia — Informes F&amp;R{% endblock %}
+
+{% block contenido %}
+<div class="row justify-content-center">
+  <div class="col-lg-11">
+
+    <div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
+      <h3 class="fw-bold text-dark mb-0">
+        <i class="bi bi-book text-primary"></i> Información de Referencia
+        {% if municipio %}<span class="badge bg-info text-dark ms-2">{{ municipio }} · {{ com.nombre }}</span>{% endif %}
+      </h3>
+      <div class="d-flex align-items-center gap-1 flex-wrap">
+        {% for c in combos %}
+        <a href="{{ url_for('main.informacion_referencia', com=c.id) }}"
+           class="btn {{ 'btn-warning fw-bold' if c.id == com.id else 'btn-outline-warning' }}">
+          <i class="bi bi-folder2"></i> {{ c.municipio.nombre }}
+        </a>
+        {% endfor %}
+      </div>
+    </div>
+
+    {% macro fmtd(v) %}{% if v is not none %}${{ "{:,.0f}".format(v).replace(",", ".") }}{% else %}—{% endif %}{% endmacro %}
+
+    <div class="card border-0 shadow-sm mb-4">
+      <div class="card-body p-0">
+        <div class="accordion accordion-flush" id="accReferencia">
+
+          <!-- Módulo 1: Análisis General por mes -->
+          <div class="accordion-item">
+            <h2 class="accordion-header">
+              <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#refAnalisis"
+                      aria-expanded="false" aria-controls="refAnalisis">
+                <i class="bi bi-graph-up me-2"></i> Análisis General — consumo, facturación y recaudo por mes
+              </button>
+            </h2>
+            <div id="refAnalisis" class="accordion-collapse collapse" data-bs-parent="#accReferencia">
+              <div class="accordion-body">
+
+                <div class="d-flex align-items-center gap-2 mb-3 flex-wrap">
+                  {% for a in anios %}
+                  <a href="{{ url_for('main.informacion_referencia', com=com.id, anio=a) }}"
+                     class="btn {{ 'btn-warning fw-bold' if a == anio else 'btn-outline-warning' }}">
+                    <i class="bi bi-folder2"></i> {{ a }}
+                  </a>
+                  {% endfor %}
+                  <form method="POST" action="{{ url_for('main.informacion_referencia_crear_anio') }}"
+                        class="d-flex align-items-center gap-2 ms-2">
+                    <input type="hidden" name="com" value="{{ com.id }}">
+                    <input type="number" name="anio" min="1900" max="2100" required
+                           class="form-control form-control-sm" style="width:110px"
+                           placeholder="Ej. 2027" value="{{ anio + 1 if anio else 2027 }}">
+                    <button type="submit" class="btn btn-sm btn-outline-secondary">
+                      <i class="bi bi-folder-plus"></i> Crear año
+                    </button>
+                  </form>
+                  {% if anio %}
+                  <form method="POST" action="{{ url_for('main.informacion_referencia_eliminar_anio') }}" class="ms-1"
+                        data-confirm="¿Está seguro de eliminar la carpeta de Análisis General del año {{ anio }}? Esta acción no se puede deshacer.">
+                    <input type="hidden" name="com" value="{{ com.id }}">
+                    <input type="hidden" name="anio" value="{{ anio }}">
+                    <button type="submit" class="btn btn-sm btn-outline-danger" title="Eliminar carpeta {{ anio }}">
+                      <i class="bi bi-trash"></i> Eliminar
+                    </button>
+                  </form>
+                  {% endif %}
+                </div>
+
+                {% if not anio %}
+                <div class="alert alert-warning mb-0">
+                  <i class="bi bi-info-circle"></i> No hay carpetas de Análisis General para este municipio. Use
+                  "Crear año" para iniciar el seguimiento mensual de un año.
+                </div>
+                {% else %}
+                <div class="table-responsive">
+                  <table class="table table-sm table-striped table-hover mb-0" style="font-size:0.85rem">
+                    <thead class="table-dark">
+                      <tr>
+                        <th>Periodo</th>
+                        <th class="text-end">Consumo Energía</th>
+                        <th class="text-end">Facturación</th>
+                        <th class="text-end">Recaudo</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {% set ns = namespace(total_cons=0, total_fact=0, total_rec=0, n=0) %}
+                      {% for m in range(1, 13) %}
+                      {% set d = meses_year.get(m|string) %}
+                      {% set vcons = d.consumo if d else none %}
+                      {% set vfact = d.facturacion if d else none %}
+                      {% set vrec = d.recaudo if d else none %}
+                      {% if d %}
+                        {% set ns.total_cons = ns.total_cons + (vcons or 0) %}
+                        {% set ns.total_fact = ns.total_fact + (vfact or 0) %}
+                        {% set ns.total_rec = ns.total_rec + (vrec or 0) %}
+                        {% set ns.n = ns.n + 1 %}
+                      {% endif %}
+                      <tr>
+                        <td class="fw-bold">{{ ["Enero","Febrero","Marzo","Abril","Mayo","Junio","Julio","Agosto","Septiembre","Octubre","Noviembre","Diciembre"][m-1] }} {{ anio }}</td>
+                        <td class="text-end">{{ fmtd(vcons) }}</td>
+                        <td class="text-end">{{ fmtd(vfact) }}</td>
+                        <td class="text-end">{{ fmtd(vrec) }}</td>
+                      </tr>
+                      {% endfor %}
+                      <tr class="table-warning fw-bold">
+                        <td>TOTAL</td>
+                        <td class="text-end">{{ fmtd(ns.total_cons if ns.n else none) }}</td>
+                        <td class="text-end">{{ fmtd(ns.total_fact if ns.n else none) }}</td>
+                        <td class="text-end">{{ fmtd(ns.total_rec if ns.n else none) }}</td>
+                      </tr>
+                      <tr class="table-light fw-bold">
+                        <td>PROMEDIO</td>
+                        <td class="text-end">{{ fmtd((ns.total_cons/ns.n) if ns.n else none) }}</td>
+                        <td class="text-end">{{ fmtd((ns.total_fact/ns.n) if ns.n else none) }}</td>
+                        <td class="text-end">{{ fmtd((ns.total_rec/ns.n) if ns.n else none) }}</td>
+                      </tr>
+                    </tbody>
+                  </table>
+                </div>
+
+                <div class="mt-3">
+                  <div style="position:relative;height:280px"><canvas id="chartAnGral"></canvas></div>
+                  <div class="text-center small text-muted mt-2" id="txtTotalAnGral"></div>
+                </div>
+                <div class="small text-muted mt-2">
+                  <i class="bi bi-info-circle"></i>
+                  La información se agrega automáticamente cada mes cuando se carga y genera un informe en
+                  <a href="{{ url_for('main.index') }}">Cargar Archivos</a>.
+                  {% if not ns.n %}La carpeta del año {{ anio }} está vacía: los meses se llenarán conforme se cargan los informes.{% endif %}
+                </div>
+                {% endif %}
+              </div>
+            </div>
+          </div>
+
+          <!-- Módulo 2: Tarifas por año -->
+          <div class="accordion-item">
+            <h2 class="accordion-header">
+              <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#refTarifas"
+                      aria-expanded="false" aria-controls="refTarifas">
+                <i class="bi bi-tag me-2"></i> Tarifas — residenciales, no residenciales, autogeneradores y actividades económicas
+              </button>
+            </h2>
+            <div id="refTarifas" class="accordion-collapse collapse" data-bs-parent="#accReferencia">
+              <div class="accordion-body">
+
+                <div class="d-flex align-items-center gap-2 mb-3 flex-wrap">
+                  {% for a in tarifas_anios %}
+                  <a href="{{ url_for('main.informacion_referencia', com=com.id, tanio=a) }}"
+                     class="btn {{ 'btn-warning fw-bold' if a == tanio else 'btn-outline-warning' }}">
+                    <i class="bi bi-folder2"></i> {{ a }}
+                  </a>
+                  {% endfor %}
+                  <form method="POST" action="{{ url_for('main.tarifas_crear_anio') }}"
+                        class="d-flex align-items-center gap-2 ms-2">
+                    <input type="hidden" name="com" value="{{ com.id }}">
+                    <input type="number" name="anio" min="1900" max="2100" required
+                           class="form-control form-control-sm" style="width:110px"
+                           placeholder="Ej. 2027" value="{{ tanio + 1 if tanio else 2027 }}">
+                    <button type="submit" class="btn btn-sm btn-outline-secondary">
+                      <i class="bi bi-folder-plus"></i> Crear año
+                    </button>
+                  </form>
+                  {% if tanio %}
+                  <form method="POST" action="{{ url_for('main.tarifas_eliminar_anio') }}" class="ms-1"
+                        data-confirm="¿Está seguro de eliminar la carpeta de Tarifas del año {{ tanio }}? Esta acción no se puede deshacer.">
+                    <input type="hidden" name="com" value="{{ com.id }}">
+                    <input type="hidden" name="anio" value="{{ tanio }}">
+                    <button type="submit" class="btn btn-sm btn-outline-danger" title="Eliminar carpeta {{ tanio }}">
+                      <i class="bi bi-trash"></i> Eliminar
+                    </button>
+                  </form>
+                  <button type="button" class="btn btn-sm btn-dark ms-auto" id="btnEditarTarifas">
+                    <i class="bi bi-pencil-square"></i> Editar tarifas de {{ tanio }}
+                  </button>
+                  {% endif %}
+                </div>
+
+                {% if not tarifas_year %}
+                <div class="alert alert-warning mb-0">
+                  <i class="bi bi-info-circle"></i> No hay tarifas definidas para este año. Cree la carpeta del año o
+                  use el botón de edición para ingresarlas.
+                </div>
+                {% endif %}
+
+                                {% set tf = (tarifas_year or {}) %}
+                {% set tl = tf.lcee if tf.get('lcee') else {} %}
+                {% set es_lcee = tf.get('esquema') == 'lcee' %}
+                <!-- Vista lectura -->
+                {% if tarifas_year %}
+                <div id="verTarifas">
+                {% if es_lcee %}
+                <div class="small text-muted mb-3">
+                  <i class="bi bi-info-circle"></i> Esquema de tarifas: <strong>porcentaje sobre la
+                  Liquidación del Consumo de Energía Eléctrica (LCEE)</strong>. Origen:
+                  {{ tl.fuente or '—' }}.
+                </div>
+                {% if tl.base_gravable %}
+                <div class="small text-muted mb-3">
+                  <i class="bi bi-bezier2"></i> <strong>Base gravable:</strong> {{ tl.base_gravable }}.
+                </div>
+                {% endif %}
+                <div class="row g-3">
+                  <div class="col-lg-6">
+                    <h6 class="fw-bold text-dark">Sector residencial — % sobre LCEE por estrato</h6>
+                    <div class="table-responsive">
+                      <table class="table table-sm table-striped" style="font-size:0.8rem">
+                        <thead class="table-dark"><tr><th>Estrato</th><th class="text-end">% sobre LCEE</th></tr></thead>
+                        <tbody>
+                          {% for f in (tl.residenciales or []) %}
+                          <tr>
+                            <td>Estrato {{ f.estrato }}</td>
+                            <td class="text-end fw-bold text-warning">{{ "%.0f"|format(f.porcentaje) }}%</td>
+                          </tr>
+                          {% endfor %}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                  <div class="col-lg-6">
+                    <h6 class="fw-bold text-dark">Sectores no residenciales y otros — % sobre LCEE</h6>
+                    <div class="table-responsive">
+                      <table class="table table-sm table-striped" style="font-size:0.8rem">
+                        <thead class="table-dark"><tr><th>Sector</th><th class="text-end">% sobre LCEE</th></tr></thead>
+                        <tbody>
+                          {% for f in (tl.sectores or []) %}
+                          <tr>
+                            <td>{{ f.sector }}</td>
+                            <td class="text-end fw-bold text-warning">{{ "%.0f"|format(f.porcentaje) }}%</td>
+                          </tr>
+                          {% endfor %}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                </div>
+
+                <div class="row g-3 mt-1">
+                  <div class="col-lg-6">
+                    <h6 class="fw-bold text-dark">Predios y/o lotes sin servicio de energía</h6>
+                    <div class="p-2 bg-light rounded small">
+                      {% set pss = tl.predios_sin_servicio or {} %}
+                      <i class="bi bi-info-circle"></i>
+                      <strong>{{ pss.por_mil }} por mil</strong> sobre {{ pss.base or 'el avalúo que sirve de base para liquidar el impuesto predial' }}
+                      (contribuyentes no clasificados en las actividades previstas en el Artículo 242).
+                    </div>
+                  </div>
+                  <div class="col-lg-6">
+                    <h6 class="fw-bold text-dark">Notas del Acuerdo</h6>
+                    <ul class="small text-muted mb-0 ps-3">
+                      {% for n in (tl.notas or []) %}<li>{{ n }}</li>{% endfor %}
+                    </ul>
+                  </div>
+                </div>
+                {% else %}
+                <div class="row g-3">
+                  <div class="col-lg-6">
+                    <h6 class="fw-bold text-dark">Tarifas residenciales</h6>
+                    <div class="table-responsive">
+                      <table class="table table-sm table-striped" style="font-size:0.8rem">
+                        <thead class="table-dark"><tr><th>Clasificación</th><th class="text-end">Urbano</th><th class="text-end">Rural</th><th class="text-end">Bimensual Urb.</th><th class="text-end">Bimensual Rural</th></tr></thead>
+                        <tbody>
+                          {% for f in (tf.residenciales or []) %}
+                          <tr>
+                            <td>{{ f.clasificacion }}</td>
+                            <td class="text-end">{{ fmtd(f.urbano) }}</td>
+                            <td class="text-end">{{ fmtd(f.rural) }}</td>
+                            <td class="text-end">{{ fmtd(f.bimensual_urbano) }}</td>
+                            <td class="text-end">{{ fmtd(f.bimensual_rural) }}</td>
+                          </tr>
+                          {% endfor %}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                  <div class="col-lg-6">
+                    <h6 class="fw-bold text-dark">Tarifas no residenciales — Industrial, Comercial, Oficial y Otros</h6>
+                    <div class="table-responsive">
+                      <table class="table table-sm table-striped" style="font-size:0.8rem">
+                        <thead class="table-dark"><tr><th>Rango</th><th>Desde</th><th>Hasta</th><th class="text-end">Tarifa mín. {{ tanio }}</th><th class="text-end">Bimensual</th></tr></thead>
+                        <tbody>
+                          {% for f in (tf.no_residenciales or []) %}
+                          <tr>
+                            <td>{{ f.rango }}</td>
+                            <td>{{ f.desde }}</td>
+                            <td>{{ f.hasta }}</td>
+                            <td class="text-end">{{ fmtd(f.tarifa) }}</td>
+                            <td class="text-end">{{ fmtd(f.bimensual) }}</td>
+                          </tr>
+                          {% endfor %}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                </div>
+
+                <div class="row g-3 mt-1">
+                  <div class="col-lg-6">
+                    <h6 class="fw-bold text-dark">Autogeneradores o cogeneradores</h6>
+                    <div class="table-responsive">
+                      <table class="table table-sm table-striped" style="font-size:0.8rem">
+                        <thead class="table-dark"><tr><th>Rango</th><th>Desde</th><th>Hasta</th><th class="text-end">Tarifa (SMMLV)</th><th class="text-end">Tarifa mín. {{ tanio }}</th></tr></thead>
+                        <tbody>
+                          {% for f in (tf.autogeneradores or []) %}
+                          <tr>
+                            <td>{{ f.rango }}</td>
+                            <td>{{ f.desde }}</td>
+                            <td>{{ f.hasta }}</td>
+                            <td class="text-end">{{ f.smlmv if f.smlmv is not none else '—' }}</td>
+                            <td class="text-end">{{ fmtd(f.tarifa) }}</td>
+                          </tr>
+                          {% endfor %}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                  <div class="col-lg-6">
+                    <h6 class="fw-bold text-dark">Actividades económicas específicas</h6>
+                    <div class="table-responsive">
+                      <table class="table table-sm table-striped" style="font-size:0.8rem">
+                        <thead class="table-dark"><tr><th>Grupo</th><th class="text-end">Tarifa (SMMLV)</th><th class="text-end">Tarifa año {{ tanio }}</th><th class="text-end">Bimensual</th></tr></thead>
+                        <tbody>
+                          {% for f in (tf.actividades or []) %}
+                          <tr>
+                            <td class="fw-bold">{{ f.grupo }}</td>
+                            <td class="text-end">{{ f.smmvl if f.smmvl is not none else '—' }}</td>
+                            <td class="text-end">{{ fmtd(f.tarifa) }}</td>
+                            <td class="text-end">{{ fmtd(f.bimensual) }}</td>
+                          </tr>
+                          {% endfor %}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                </div>
+
+                {% if tf.techo %}
+                <div class="mt-3 p-2 bg-light rounded small">
+                  <i class="bi bi-info-circle"></i>
+                  <strong>Techo de la tarifa porcentual:</strong> {{ "%.0f"|format(tf.techo.tarifa_factor) }} × SMMLV =
+                  {{ fmtd(tf.techo.tarifa) }} (bimensual {{ fmtd(tf.techo.bimensual) }}).
+                  Se aplican además tarifas porcentuales de C.E.E (7%, 12% y 14%) según el uso.
+                </div>
+                {% endif %}
+                {% endif %}
+                </div>
+                {% endif %}
+
+                <!-- Editor de tarifas (año seleccionado) -->
+                {% set e = tarifas_year or {} %}
+                <div id="editTarifas" class="d-none">
+                  {% if es_lcee %}
+                  <div id="editLcee">
+                    <div class="small text-muted mb-2">
+                      <i class="bi bi-info-circle"></i> Edite los porcentajes sobre la LCEE del año {{ tanio }}:
+                      cada tarifa es un porcentaje aplicado a la Liquidación del Consumo de Energía Eléctrica.
+                    </div>
+                    <div class="row g-3">
+                      <div class="col-lg-6">
+                        <h6 class="fw-bold text-dark">Sector residencial — % sobre LCEE por estrato</h6>
+                        <table class="table table-sm table-striped align-middle" style="font-size:0.78rem">
+                          <thead class="table-dark"><tr><th>Estrato</th><th>% sobre LCEE</th><th></th></tr></thead>
+                          <tbody id="edLceeRes">
+                            {% for f in ((e.lcee or {}).residenciales or []) %}
+                            <tr class="ed-row">
+                              <td><input class="form-control form-control-sm ed-lcee-est" type="number" min="0" max="6" value="{{ f.estrato }}"></td>
+                              <td><input class="form-control form-control-sm ed-lcee-pct" type="number" step="0.5" min="0" max="100" value="{{ f.porcentaje }}"></td>
+                              <td class="text-center"><input type="checkbox" class="form-check-input ed-del" title="Eliminar fila"></td>
+                            </tr>
+                            {% endfor %}
+                          </tbody>
+                        </table>
+                        <button type="button" class="btn btn-sm btn-outline-secondary" data-tpl="tplLceeRes"><i class="bi bi-plus-circle"></i> Añadir fila</button>
+                        <template id="tplLceeRes">
+                          <tr class="ed-row">
+                            <td><input class="form-control form-control-sm ed-lcee-est" type="number" min="0" max="6" placeholder="Estrato"></td>
+                            <td><input class="form-control form-control-sm ed-lcee-pct" type="number" step="0.5" min="0" max="100"></td>
+                            <td class="text-center"><input type="checkbox" class="form-check-input ed-del" title="Eliminar fila"></td>
+                          </tr>
+                        </template>
+                      </div>
+                      <div class="col-lg-6">
+                        <h6 class="fw-bold text-dark">Sectores — % sobre LCEE</h6>
+                        <table class="table table-sm table-striped align-middle" style="font-size:0.78rem">
+                          <thead class="table-dark"><tr><th>Sector</th><th>% sobre LCEE</th><th></th></tr></thead>
+                          <tbody id="edLceeSec">
+                            {% for f in ((e.lcee or {}).sectores or []) %}
+                            <tr class="ed-row">
+                              <td><input class="form-control form-control-sm ed-lcee-nombre" value="{{ f.sector }}"></td>
+                              <td><input class="form-control form-control-sm ed-lcee-pct" type="number" step="0.5" min="0" max="100" value="{{ f.porcentaje }}"></td>
+                              <td class="text-center"><input type="checkbox" class="form-check-input ed-del" title="Eliminar fila"></td>
+                            </tr>
+                            {% endfor %}
+                          </tbody>
+                        </table>
+                        <button type="button" class="btn btn-sm btn-outline-secondary" data-tpl="tplLceeSec"><i class="bi bi-plus-circle"></i> Añadir fila</button>
+                        <template id="tplLceeSec">
+                          <tr class="ed-row">
+                            <td><input class="form-control form-control-sm ed-lcee-nombre" value=""></td>
+                            <td><input class="form-control form-control-sm ed-lcee-pct" type="number" step="0.5" min="0" max="100"></td>
+                            <td class="text-center"><input type="checkbox" class="form-check-input ed-del" title="Eliminar fila"></td>
+                          </tr>
+                        </template>
+                      </div>
+                    </div>
+                    <div class="row g-3 mt-1">
+                      <div class="col-lg-6">
+                        <h6 class="fw-bold text-dark">Predios y/o lotes sin servicio de energía</h6>
+                        <div class="row g-2 align-items-end">
+                          <div class="col-auto"><label class="form-label small mb-0">Tasa (por mil sobre el avalúo)</label>
+                            <input class="form-control form-control-sm ed-num" type="number" step="0.1" min="0" id="edLceePm" value="{{ ((e.lcee or {}).predios_sin_servicio or {}).por_mil or '' }}"></div>
+                          <div class="col"><label class="form-label small mb-0">Base</label>
+                            <input class="form-control form-control-sm" type="text" id="edLceeBase" value="{{ ((e.lcee or {}).predios_sin_servicio or {}).base or 'avalúo catastral' }}"></div>
+                        </div>
+                      </div>
+                    </div>
+                    <input type="hidden" id="edLceeFuente" value="{{ tl.fuente or '' }}">
+                    <input type="hidden" id="edLceeBaseG" value="{{ tl.base_gravable or '' }}">
+                  </div>
+                  {% else %}
+                  <div class="small text-muted mb-2">
+                    <i class="bi bi-info-circle"></i> Edite los valores del año {{ tanio }}. Para añadir una fila use
+                    <i class="bi bi-plus-circle"></i>, para quitarla marque su casilla de eliminar.
+                  </div>
+                  <div class="row g-3">
+                    <div class="col-lg-6">
+                      <h6 class="fw-bold text-dark">Tarifas residenciales</h6>
+                      <table class="table table-sm table-striped align-middle" style="font-size:0.78rem">
+                        <thead class="table-dark"><tr><th>Clasificación</th><th>Urbano</th><th>Rural</th><th>Bim. Urb.</th><th>Bim. Rural</th><th></th></tr></thead>
+                        <tbody id="edResBody">
+                          {% for f in (e.residenciales or [{}]) %}
+                          <tr class="ed-row">
+                            <td><input class="form-control form-control-sm ed-label" value="{{ f.clasificacion or '' }}"></td>
+                            <td><input class="form-control form-control-sm ed-num ed-res-u" type="number" value="{{ f.urbano if f.urbano is not none else '' }}"></td>
+                            <td><input class="form-control form-control-sm ed-num ed-res-r" type="number" value="{{ f.rural if f.rural is not none else '' }}"></td>
+                            <td><input class="form-control form-control-sm ed-num ed-res-bu" type="number" value="{{ f.bimensual_urbano if f.bimensual_urbano is not none else '' }}"></td>
+                            <td><input class="form-control form-control-sm ed-num ed-res-br" type="number" value="{{ f.bimensual_rural if f.bimensual_rural is not none else '' }}"></td>
+                            <td class="text-center"><input type="checkbox" class="form-check-input ed-del" title="Eliminar fila"></td>
+                          </tr>
+                          {% endfor %}
+                        </tbody>
+                      </table>
+                      <button type="button" class="btn btn-sm btn-outline-secondary" data-tpl="tplRes"><i class="bi bi-plus-circle"></i> Añadir fila</button>
+                      <template id="tplRes">
+                        <tr class="ed-row">
+                          <td><input class="form-control form-control-sm ed-label" value=""></td>
+                          <td><input class="form-control form-control-sm ed-num ed-res-u" type="number" value=""></td>
+                          <td><input class="form-control form-control-sm ed-num ed-res-r" type="number" value=""></td>
+                          <td><input class="form-control form-control-sm ed-num ed-res-bu" type="number" value=""></td>
+                          <td><input class="form-control form-control-sm ed-num ed-res-br" type="number" value=""></td>
+                          <td class="text-center"><input type="checkbox" class="form-check-input ed-del" title="Eliminar fila"></td>
+                        </tr>
+                      </template>
+                    </div>
+                    <div class="col-lg-6">
+                      <h6 class="fw-bold text-dark">Tarifas no residenciales</h6>
+                      <table class="table table-sm table-striped align-middle" style="font-size:0.78rem">
+                        <thead class="table-dark"><tr><th>Rango</th><th>Desde</th><th>Hasta</th><th>Tarifa mín.</th><th>Bimensual</th><th></th></tr></thead>
+                        <tbody id="edNrBody">
+                          {% for f in (e.no_residenciales or [{}]) %}
+                          <tr class="ed-row">
+                            <td><input class="form-control form-control-sm ed-label" value="{{ f.rango or '' }}"></td>
+                            <td><input class="form-control form-control-sm ed-txt ed-from" value="{{ f.desde or '' }}"></td>
+                            <td><input class="form-control form-control-sm ed-txt ed-to" value="{{ f.hasta or '' }}"></td>
+                            <td><input class="form-control form-control-sm ed-num ed-nr-t" type="number" value="{{ f.tarifa if f.tarifa is not none else '' }}"></td>
+                            <td><input class="form-control form-control-sm ed-num ed-nr-b" type="number" value="{{ f.bimensual if f.bimensual is not none else '' }}"></td>
+                            <td class="text-center"><input type="checkbox" class="form-check-input ed-del" title="Eliminar fila"></td>
+                          </tr>
+                          {% endfor %}
+                        </tbody>
+                      </table>
+                      <button type="button" class="btn btn-sm btn-outline-secondary" data-tpl="tplNr"><i class="bi bi-plus-circle"></i> Añadir fila</button>
+                      <template id="tplNr">
+                        <tr class="ed-row">
+                          <td><input class="form-control form-control-sm ed-label" value=""></td>
+                          <td><input class="form-control form-control-sm ed-txt ed-from" value=""></td>
+                          <td><input class="form-control form-control-sm ed-txt ed-to" value=""></td>
+                          <td><input class="form-control form-control-sm ed-num ed-nr-t" type="number" value=""></td>
+                          <td><input class="form-control form-control-sm ed-num ed-nr-b" type="number" value=""></td>
+                          <td class="text-center"><input type="checkbox" class="form-check-input ed-del" title="Eliminar fila"></td>
+                        </tr>
+                      </template>
+                    </div>
+                  </div>
+
+                  <div class="row g-3 mt-1">
+                    <div class="col-lg-6">
+                      <h6 class="fw-bold text-dark">Autogeneradores o cogeneradores</h6>
+                      <table class="table table-sm table-striped align-middle" style="font-size:0.78rem">
+                        <thead class="table-dark"><tr><th>Rango</th><th>Desde</th><th>Hasta</th><th>SMMLV</th><th>Tarifa mín.</th><th></th></tr></thead>
+                        <tbody id="edAuBody">
+                          {% for f in (e.autogeneradores or [{}]) %}
+                          <tr class="ed-row">
+                            <td><input class="form-control form-control-sm ed-label" value="{{ f.rango or '' }}"></td>
+                            <td><input class="form-control form-control-sm ed-txt ed-from" value="{{ f.desde or '' }}"></td>
+                            <td><input class="form-control form-control-sm ed-txt ed-to" value="{{ f.hasta or '' }}"></td>
+                            <td><input class="form-control form-control-sm ed-num ed-au-s" type="number" value="{{ f.smlmv if f.smlmv is not none else '' }}"></td>
+                            <td><input class="form-control form-control-sm ed-num ed-au-t" type="number" value="{{ f.tarifa if f.tarifa is not none else '' }}"></td>
+                            <td class="text-center"><input type="checkbox" class="form-check-input ed-del" title="Eliminar fila"></td>
+                          </tr>
+                          {% endfor %}
+                        </tbody>
+                      </table>
+                      <button type="button" class="btn btn-sm btn-outline-secondary" data-tpl="tplAu"><i class="bi bi-plus-circle"></i> Añadir fila</button>
+                      <template id="tplAu">
+                        <tr class="ed-row">
+                          <td><input class="form-control form-control-sm ed-label" value=""></td>
+                          <td><input class="form-control form-control-sm ed-txt ed-from" value=""></td>
+                          <td><input class="form-control form-control-sm ed-txt ed-to" value=""></td>
+                          <td><input class="form-control form-control-sm ed-num ed-au-s" type="number" value=""></td>
+                          <td><input class="form-control form-control-sm ed-num ed-au-t" type="number" value=""></td>
+                          <td class="text-center"><input type="checkbox" class="form-check-input ed-del" title="Eliminar fila"></td>
+                        </tr>
+                      </template>
+                    </div>
+                    <div class="col-lg-6">
+                      <h6 class="fw-bold text-dark">Actividades económicas específicas</h6>
+                      <table class="table table-sm table-striped align-middle" style="font-size:0.78rem">
+                        <thead class="table-dark"><tr><th>Grupo</th><th>SMMLV</th><th>Tarifa año {{ tanio }}</th><th>Bimensual</th><th></th></tr></thead>
+                        <tbody id="edAcBody">
+                          {% for f in (e.actividades or [{}]) %}
+                          <tr class="ed-row">
+                            <td><input class="form-control form-control-sm ed-label" value="{{ f.grupo or '' }}"></td>
+                            <td><input class="form-control form-control-sm ed-num ed-ac-s" type="number" value="{{ f.smmvl if f.smmvl is not none else '' }}"></td>
+                            <td><input class="form-control form-control-sm ed-num ed-ac-t" type="number" value="{{ f.tarifa if f.tarifa is not none else '' }}"></td>
+                            <td><input class="form-control form-control-sm ed-num ed-ac-b" type="number" value="{{ f.bimensual if f.bimensual is not none else '' }}"></td>
+                            <td class="text-center"><input type="checkbox" class="form-check-input ed-del" title="Eliminar fila"></td>
+                          </tr>
+                          {% endfor %}
+                        </tbody>
+                      </table>
+                      <button type="button" class="btn btn-sm btn-outline-secondary" data-tpl="tplAc"><i class="bi bi-plus-circle"></i> Añadir fila</button>
+                      <template id="tplAc">
+                        <tr class="ed-row">
+                          <td><input class="form-control form-control-sm ed-label" value=""></td>
+                          <td><input class="form-control form-control-sm ed-num ed-ac-s" type="number" value=""></td>
+                          <td><input class="form-control form-control-sm ed-num ed-ac-t" type="number" value=""></td>
+                          <td><input class="form-control form-control-sm ed-num ed-ac-b" type="number" value=""></td>
+                          <td class="text-center"><input type="checkbox" class="form-check-input ed-del" title="Eliminar fila"></td>
+                        </tr>
+                      </template>
+                    </div>
+                  </div>
+
+                  <div class="row g-3 mt-1">
+                    <div class="col-lg-6">
+                      <h6 class="fw-bold text-dark">Techo de la tarifa porcentual</h6>
+                      <div class="row g-2 align-items-end">
+                        <div class="col"><label class="form-label small mb-0">Factor (× SMMLV)</label>
+                          <input class="form-control form-control-sm ed-num" type="number" id="edTfF" value="{{ (e.techo or {}).tarifa_factor if (e.techo or {}).get('tarifa_factor') is not none else '' }}"></div>
+                        <div class="col"><label class="form-label small mb-0">Tarifa máxima</label>
+                          <input class="form-control form-control-sm ed-num" type="number" id="edTfT" value="{{ (e.techo or {}).tarifa if (e.techo or {}).get('tarifa') is not none else '' }}"></div>
+                        <div class="col"><label class="form-label small mb-0">Bimensual</label>
+                          <input class="form-control form-control-sm ed-num" type="number" id="edTfB" value="{{ (e.techo or {}).bimensual if (e.techo or {}).get('bimensual') is not none else '' }}"></div>
+                      </div>
+                    </div>
+                  </div>
+                  {% endif %}
+
+                  <div class="d-flex justify-content-end gap-2 mt-3">
+                    <button type="button" class="btn btn-sm btn-outline-secondary" id="btnCancelarTarifas">
+                      <i class="bi bi-x"></i> Cancelar
+                    </button>
+                    <button type="button" class="btn btn-sm btn-warning fw-bold" id="btnGuardarTarifas">
+                      <i class="bi bi-save"></i> Guardar tarifas {{ tanio }}
+                    </button>
+                  </div>
+                </div>
+
+              </div>
+            </div>
+          </div>
+
+          <!-- Módulo 3: Descripción de Grupos -->
+          <div class="accordion-item">
+            <h2 class="accordion-header">
+              <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#refDescripcion"
+                      aria-expanded="false" aria-controls="refDescripcion">
+                <i class="bi bi-building me-2"></i> Descripción de Grupos de Empresas con Actividades Económicas
+              </button>
+            </h2>
+            <div id="refDescripcion" class="accordion-collapse collapse" data-bs-parent="#accReferencia">
+              <div class="accordion-body">
+                {% if not desc_grupos %}
+                <div class="alert alert-warning mb-0">
+                  <i class="bi bi-info-circle"></i> La descripción de grupos para el municipio aún no está disponible.
+                </div>
+                {% else %}
+                <div class="small text-muted mb-2">
+                  <i class="bi bi-info-circle"></i> Para editar la descripción de un grupo, use el icono
+                  <i class="bi bi-pencil-square"></i> de su tarjeta.
+                </div>
+                <div class="row g-3">
+                  {% for grupo, items in (desc_grupos or {}).items() %}
+                  <div class="col-md-6 col-lg-4">
+                    <div class="card h-100 desc-card" data-grupo="{{ grupo }}" style="background:linear-gradient(145deg,#f5f5f5,#e8e8e8);border:1px solid #d0d0d0;box-shadow:2px 3px 8px rgba(0,0,0,.08)">
+                      <div class="card-body pb-2">
+                        <div class="d-flex justify-content-between align-items-start">
+                          <h6 class="fw-bold text-dark mb-2">{{ grupo }}</h6>
+                          <button type="button" class="btn btn-sm btn-outline-secondary desc-edit"
+                                  title="Editar descripción del {{ grupo }}">
+                            <i class="bi bi-pencil-square"></i>
+                          </button>
+                        </div>
+                        <ul class="small text-muted mb-0 ps-3 desc-list">
+                          {% for item in items %}<li>{{ item }}</li>{% endfor %}
+                        </ul>
+                        <div class="desc-editor d-none">
+                          <label class="form-label small fw-bold mb-1">Actividades — una por línea</label>
+                          <textarea class="form-control form-control-sm desc-ta" rows="8"></textarea>
+                          <div class="d-flex justify-content-end gap-2 mt-2">
+                            <button type="button" class="btn btn-sm btn-outline-secondary desc-cancel">
+                              Cancelar
+                            </button>
+                            <button type="button" class="btn btn-sm btn-warning desc-save">
+                              <i class="bi bi-save"></i> Guardar
+                            </button>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                  {% endfor %}
+                </div>
+                {% endif %}
+              </div>
+            </div>
+          </div>
+
+        </div>
+      </div>
+    </div>
+
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+document.querySelectorAll('form[data-confirm]').forEach(f => {
+  f.addEventListener('submit', e => {
+    if (!window.confirm(f.dataset.confirm)) e.preventDefault();
+  });
+});
+
+// Recordar el módulo del acordeón abierto para no saltar al primero tras recargar
+const ACC_REF = document.getElementById('accReferencia');
+if (ACC_REF){
+  const KEY = 'fyrAcordeonRef';
+  function guardarPanel(){
+    const open = document.querySelector('#accReferencia .accordion-collapse.show');
+    if (open) localStorage.setItem(KEY, open.id);
+    else localStorage.removeItem(KEY);
+  }
+  ACC_REF.addEventListener('shown.bs.collapse', guardarPanel);
+  ACC_REF.addEventListener('hidden.bs.collapse', guardarPanel);
+  const prev = localStorage.getItem(KEY);
+  if (prev){
+    const panel = document.getElementById(prev);
+    if (panel){
+      bootstrap.Collapse.getOrCreateInstance(panel).show();
+      setTimeout(() => panel.scrollIntoView({behavior: 'smooth', block: 'start'}), 150);
+    }
+  }
+}
+
+function fmtN(n){ return Math.round(n).toLocaleString('es-CO'); }
+function fmtCorto(n){
+  const a = Math.abs(n);
+  if (a >= 1e6) return '$' + (n/1e6).toLocaleString('es-CO',{maximumFractionDigits:1}) + 'M';
+  if (a >= 1e3) return '$' + (n/1e3).toLocaleString('es-CO',{maximumFractionDigits:0}) + 'm';
+  return '$' + fmtN(n);
+}
+const fmtFull = n => '$' + fmtN(n);
+
+function alternarPorcion(e, item, legend) {
+  const chart = legend.chart;
+  chart.toggleDataVisibility(item.index);
+  chart.update();
+}
+
+const tachaLeyenda = {
+  id:'tachaLeyenda',
+  afterDraw(chart){
+    const legend = chart.legend;
+    if (!legend || !legend.legendItems || !legend.legendHitBoxes) return;
+    const {ctx} = chart;
+    ctx.save();
+    ctx.strokeStyle = '#1a1a18';
+    ctx.lineWidth = 1.5;
+    legend.legendItems.forEach((item, i) => {
+      let oculta = item.hidden === true;
+      if (!oculta && typeof chart.getDataVisibility === 'function' && item.index != null) {
+        oculta = chart.getDataVisibility(item.index) === false;
+      }
+      if (!oculta) return;
+      const box = legend.legendHitBoxes[i];
+      if (!box) return;
+      const y = box.top + box.height / 2;
+      ctx.beginPath();
+      ctx.moveTo(box.left + box.height, y);
+      ctx.lineTo(box.left + box.width, y);
+      ctx.stroke();
+    });
+    ctx.restore();
+  }
+};
+
+const rotuloBarras = {
+  id:'rotuloBarras',
+  afterDatasetsDraw(chart, args, opts){
+    const fmt = opts.fmt || fmtCorto;
+    const {ctx} = chart;
+    chart.data.datasets.forEach((ds,di)=>{
+      const meta = chart.getDatasetMeta(di);
+      meta.data.forEach((pt,i)=>{
+        const v = ds.data[i];
+        if (v == null || isNaN(Number(v))) return;
+        ctx.save();
+        ctx.translate(pt.x, pt.y + (pt.base - pt.y) / 2);
+        ctx.rotate(-Math.PI / 2);
+        ctx.font = 'bold 10px sans-serif';
+        ctx.fillStyle = '#1a1a18';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText(fmt(v), 0, 0);
+        ctx.restore();
+      });
+    });
+  }
+};
+
+const mesesYear = {{ meses_year|tojson }};
+if (document.getElementById('chartAnGral')){
+  const nombres = ['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
+  const vals = (campo) => nombres.map((_, i) => { const d = mesesYear[String(i+1)]; return d ? (d[campo] != null ? d[campo] : null) : null; });
+  new Chart(document.getElementById('chartAnGral'),{
+    type:'line',
+    data:{
+      labels: nombres,
+      datasets:[
+        {label:'Consumo', data:vals('consumo'), borderColor:'#BFBA6B', backgroundColor:'#BFBA6B', fill:false, tension:0.3, spanGaps:true, pointRadius:3},
+        {label:'Facturación', data:vals('facturacion'), borderColor:'#D9CF43', backgroundColor:'#D9CF43', fill:false, tension:0.3, spanGaps:true, pointRadius:3},
+        {label:'Recaudo', data:vals('recaudo'), borderColor:'#1E7A1E', backgroundColor:'#1E7A1E', fill:false, tension:0.3, spanGaps:true, pointRadius:3}
+      ]
+    },
+    options:{responsive:true, maintainAspectRatio:false, plugins:{
+      legend:{position:'top', onClick:alternarPorcion},
+      tooltip:{callbacks:{label:(c)=>' '+c.dataset.label+': '+fmtFull(c.parsed.y)}}
+    }},
+    plugins:[tachaLeyenda]
+  });
+  const tCons = (vals('consumo').filter(v=>v!=null)).reduce((a,b)=>a+b,0);
+  const tFactA = (vals('facturacion').filter(v=>v!=null)).reduce((a,b)=>a+b,0);
+  const tRecA = (vals('recaudo').filter(v=>v!=null)).reduce((a,b)=>a+b,0);
+  document.getElementById('txtTotalAnGral').textContent =
+    'Totales · Consumo '+fmtCorto(tCons)+' · Facturación '+fmtCorto(tFactA)+' · Recaudo '+fmtCorto(tRecA);
+}
+
+// ================= Editor de tarifas =================
+const edCom = {{ com.id }};
+const edAnio = {{ tanio or 0 }};
+const btnEditar = document.getElementById('btnEditarTarifas');
+const verTarifas = document.getElementById('verTarifas');
+const editTarifas = document.getElementById('editTarifas');
+
+if (btnEditar){
+  btnEditar.addEventListener('click', () => {
+    if (verTarifas) verTarifas.classList.add('d-none');
+    editTarifas.classList.remove('d-none');
+    btnEditar.classList.add('btn-outline-dark');
+    btnEditar.classList.remove('btn-dark');
+  });
+}
+const btnCancelar = document.getElementById('btnCancelarTarifas');
+if (btnCancelar){
+  btnCancelar.addEventListener('click', () => {
+    editTarifas.classList.add('d-none');
+    if (verTarifas) verTarifas.classList.remove('d-none');
+    if (btnEditar){ btnEditar.classList.add('btn-dark'); btnEditar.classList.remove('btn-outline-dark'); }
+  });
+}
+document.querySelectorAll('[data-tpl]').forEach(btn => {
+  btn.addEventListener('click', () => {
+    const tpl = document.getElementById(btn.dataset.tpl);
+    const parent = tpl.closest('.col-lg-6').querySelector('tbody');
+    parent.appendChild(tpl.content.cloneNode(true));
+  });
+});
+
+function valNum(input){
+  if (!input) return null;
+  const v = input.value.trim();
+  if (v === '' || v === '-') return null;
+  const n = parseFloat(String(v).replace(/[\$.]/g, '').replace(',', '.'));
+  return isNaN(n) ? null : n;
+}
+
+document.getElementById('btnGuardarTarifas').addEventListener('click', async () => {
+  const rows = (body, extra) => Array.from(document.querySelectorAll('#' + body + ' .ed-row'))
+    .filter(r => !((r.querySelector('.ed-del') || {}).checked)) 
+    .map(extra);
+  let tarifas;
+  if (document.getElementById('editLcee')){
+    const lrows = (body, extra) => rows(body, extra);
+    const pct = el => { const v = (el || {}).value; return (v === '' || v == null || isNaN(parseFloat(v))) ? null : parseFloat(v); };
+    tarifas = {
+      esquema: 'lcee',
+      lcee: {
+        fuente: (document.getElementById('edLceeFuente') || {}).value || '',
+        base_gravable: (document.getElementById('edLceeBaseG') || {}).value || '',
+        residenciales: lrows('edLceeRes', r => ({
+          estrato: pct(r.querySelector('.ed-lcee-est')),
+          porcentaje: pct(r.querySelector('.ed-lcee-pct'))
+        })).filter(x => x.estrato != null || x.porcentaje != null),
+        sectores: lrows('edLceeSec', r => ({
+          sector: (r.querySelector('.ed-lcee-nombre') || {}).value || '',
+          porcentaje: pct(r.querySelector('.ed-lcee-pct'))
+        })).filter(x => (x.sector || '').trim() || x.porcentaje != null),
+        predios_sin_servicio: {
+          por_mil: pct(document.getElementById('edLceePm')),
+          base: (document.getElementById('edLceeBase') || {}).value || 'avalúo catastral'
+        },
+        notas: (JSON.parse('{{ ((tarifas_year or {}).lcee.notas if (tarifas_year or {}).get('lcee') else [])|tojson }}') || [])
+      }
+    };
+  } else {
+  tarifas = {
+    residenciales: rows('edResBody', r => ({clasificacion: r.querySelector('.ed-label').value.trim(), urbano: valNum(r.querySelector('.ed-res-u')), rural: valNum(r.querySelector('.ed-res-r')), bimensual_urbano: valNum(r.querySelector('.ed-res-bu')), bimensual_rural: valNum(r.querySelector('.ed-res-br'))})),
+    no_residenciales: rows('edNrBody', r => ({rango: r.querySelector('.ed-label').value.trim(), desde: (r.querySelector('.ed-from')||{}).value || '', hasta: (r.querySelector('.ed-to')||{}).value || '', tarifa: valNum(r.querySelector('.ed-nr-t')), bimensual: valNum(r.querySelector('.ed-nr-b'))})),
+    autogeneradores: rows('edAuBody', r => ({rango: r.querySelector('.ed-label').value.trim(), desde: (r.querySelector('.ed-from')||{}).value || '', hasta: (r.querySelector('.ed-to')||{}).value || '', smlmv: valNum(r.querySelector('.ed-au-s')), tarifa: valNum(r.querySelector('.ed-au-t'))})),
+    actividades: rows('edAcBody', r => ({grupo: r.querySelector('.ed-label').value.trim(), smmvl: valNum(r.querySelector('.ed-ac-s')), tarifa: valNum(r.querySelector('.ed-ac-t')), bimensual: valNum(r.querySelector('.ed-ac-b'))})),
+    techo: {tarifa_factor: valNum(document.getElementById('edTfF')), tarifa: valNum(document.getElementById('edTfT')), bimensual: valNum(document.getElementById('edTfB'))}
+  };
+  }
+  const btn = document.getElementById('btnGuardarTarifas');
+  btn.disabled = true;
+  try {
+    const resp = await fetch('/informacion-referencia/tarifas/guardar', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({com: edCom, anio: edAnio, tarifas})
+    });
+    const data = await resp.json();
+    if (data.ok){
+      location.reload();
+    } else {
+      showFlash('No se pudo guardar: ' + (data.error || ''), 'danger');
+      btn.disabled = false;
+    }
+  } catch (err) {
+    showFlash('Error al guardar: ' + err, 'danger');
+    btn.disabled = false;
+  }
+});
+
+function showFlash(msg, type){
+  let box = document.getElementById('flashNovedades');
+  if (!box){
+    box = document.createElement('div');
+    box.id = 'flashNovedades';
+    box.style.cssText = 'position:fixed;top:20px;right:20px;z-index:2000;padding:12px 18px;border-radius:8px;font-weight:bold;';
+    document.body.appendChild(box);
+  }
+  box.style.background = type === 'success' ? '#198754' : '#dc3545';
+  box.style.color = '#FFFFFF';
+  box.textContent = msg;
+  setTimeout(()=> box.remove(), 2500);
+}
+
+// ================= Editor de descripción de grupos =================
+const descCom = {{ com.id }};
+document.querySelectorAll('.desc-card').forEach(card => {
+  const grupo = card.dataset.grupo;
+  const btnEdit = card.querySelector('.desc-edit');
+  const btnCancel = card.querySelector('.desc-cancel');
+  const btnSave = card.querySelector('.desc-save');
+  const list = card.querySelector('.desc-list');
+  const editor = card.querySelector('.desc-editor');
+  const ta = card.querySelector('.desc-ta');
+
+  function cerrarEditor(){
+    editor.classList.add('d-none');
+    list.classList.remove('d-none');
+    btnEdit.classList.remove('d-none');
+    btnSave.disabled = false;
+  }
+  btnEdit.addEventListener('click', () => {
+    ta.value = Array.from(list.querySelectorAll('li')).map(li => li.textContent).join('\n');
+    editor.classList.remove('d-none');
+    list.classList.add('d-none');
+    btnEdit.classList.add('d-none');
+  });
+  btnCancel.addEventListener('click', cerrarEditor);
+  btnSave.addEventListener('click', async () => {
+    const items = ta.value.split('\n').map(s => s.trim()).filter(Boolean);
+    btnSave.disabled = true;
+    try {
+      const resp = await fetch('/informacion-referencia/descripcion/guardar', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({com: descCom, grupo, items})
+      });
+      const data = await resp.json();
+      if (data.ok){ location.reload(); }
+      else { showFlash('No se pudo guardar: ' + (data.error || ''), 'danger'); btnSave.disabled = false; }
+    } catch (err) {
+      showFlash('Error al guardar: ' + err, 'danger');
+      btnSave.disabled = false;
+    }
+  });
+});
+</script>
+{% endblock %}

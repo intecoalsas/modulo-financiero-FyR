@@ -1,0 +1,354 @@
+{% extends "base.html" %}
+{% block titulo %}Cartera Acumulada SP — Informes F&amp;R{% endblock %}
+
+{% block contenido %}
+<div class="row justify-content-center">
+  <div class="col-12 col-xxl-11">
+
+    <div class="d-flex flex-wrap justify-content-between align-items-center mb-4 gap-2">
+      <h3 class="fw-bold text-dark mb-0">
+        <i class="bi bi-wallet2 text-warning"></i> Cartera Acumulada SP {{ anios_cols[0] }}–{{ anio_max }}
+        <span class="badge bg-info text-dark ms-2">{{ municipio }} · {{ com.nombre }}</span>
+      </h3>
+      <div class="d-flex align-items-center gap-2">
+        <span class="small text-muted">Saldos mensuales {{ anio }} calculados con los archivos FyR subidos.</span>
+        {% if anios_disponibles|length > 1 %}
+        <span class="small text-muted">Ver año:</span>
+        {% for a in anios_disponibles %}
+        <a href="{{ url_for('main.cartera', anio=a) }}" class="btn btn-sm {{ 'btn-primary text-white' if a == anio else 'btn-outline-secondary' }}">{{ a }}</a>
+        {% endfor %}
+        {% endif %}
+      </div>
+    </div>
+
+    {% if not cartera %}
+    <div class="alert alert-warning">
+      No hay cartera acumulada cargada para la comercializadora seleccionada.
+      Los saldos de años anteriores se conservan de la carga inicial y los meses del
+      año en curso se llenan con los archivos FyR que se vayan subiendo.
+    </div>
+    {% else %}
+
+    <!-- KPIs -->
+    <div class="row g-3 mb-4">
+      {% set fav = cartera.total_favor.get(anio|string, 0) %}
+      {% set pag = cartera.total_pagar.get(anio|string, 0) %}
+      <div class="col-md-3">
+        <div class="card border-0 shadow text-bg-success">
+          <div class="card-body text-center text-white">
+            <div class="fs-2 fw-bold">${{ "{:,.0f}".format(fav or 0).replace(",", ".") }}</div>
+            <small>Total Saldo a Favor ({{ anio }})</small>
+          </div>
+        </div>
+      </div>
+      <div class="col-md-3">
+        <div class="card border-0 shadow text-bg-danger">
+          <div class="card-body text-center text-white">
+            <div class="fs-2 fw-bold">${{ "{:,.0f}".format(pag or 0).replace(",", ".") }}</div>
+            <small>Total Saldo por Pagar ({{ anio }})</small>
+          </div>
+        </div>
+      </div>
+      <div class="col-md-3">
+        <div class="card border-0 shadow" style="background:#6f42c1">
+          <div class="card-body text-center text-white">
+            <div class="fs-2 fw-bold">{{ cartera.clientes|length }}</div>
+            <small>Clientes Especiales</small>
+          </div>
+        </div>
+      </div>
+      <div class="col-md-3">
+        <div class="card border-0 shadow" style="background:#087990">
+          <div class="card-body text-center text-white">
+            <div class="fs-2 fw-bold">{{ "{:,.0f}".format((fav or 0) + (pag or 0)).replace(",", ".") }}</div>
+            <small>Saldo Neto Consolidado ({{ anio }})</small>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Tabla principal -->
+    <div class="card border-0 shadow-sm mb-4">
+      <div class="card-header bg-dark text-white d-flex justify-content-between align-items-center">
+        <h6 class="mb-0"><i class="bi bi-table"></i> Cartera Acumulada SP — Clientes Especiales</h6>
+        <span class="small text-white-50">
+          {% if anio == anio_max %}<span class="badge bg-warning text-dark">{{ anio }}</span> se calcula con los archivos FyR subidos.{% else %}Datos históricos de referencia.{% endif %}
+          <span id="filaCount"></span>
+        </span>
+      </div>
+      <div class="card-body p-0" style="max-height:640px;overflow:auto;min-height:260px">
+        <table class="table table-sm table-striped table-hover mb-0" style="font-size:0.78rem">
+          <thead class="table-dark align-middle sticky-top">
+            <tr>
+              <th style="width:36px">#</th>
+              <th>ID Cuenta</th>
+              <th>Nombre</th>
+              <th class="text-end">2019</th>
+              <th class="text-end">2020</th>
+              <th class="text-end">2021</th>
+              <th class="text-end">2022</th>
+              <th class="text-end">2023</th>
+              <th class="text-end">2024</th>
+              <th class="text-end">2025</th>
+              <th class="text-end">2026</th>
+              <th class="text-end">VALOR TOTAL CARTERA</th>
+              <th>Notificación</th>
+              <th>Saldo</th>
+              {% for m in range(1, 13) %}
+              <th class="text-end">{{ MESES[m] }} {{ anio }}</th>
+              {% endfor %}
+            </tr>
+            <tr class="filter-row">
+              {% for i in range(0, flt_cols) %}
+              <th class="text-center">
+                {% if i == 12 or i == 13 %}
+                <span class="small text-white-50">—</span>
+                {% else %}
+                <button type="button" class="btn btn-sm btn-light flt-btn" data-col="{{ i }}" title="Filtrar columna"><i class="bi bi-funnel"></i></button>
+                {% endif %}
+              </th>
+              {% endfor %}
+            </tr>
+          </thead>
+          <tbody id="detailBody">
+            {% for c in cartera.clientes %}
+            <tr>
+              <td class="fw-bold text-muted">{{ c.item }}</td>
+              <td>{{ c.id }}</td>
+              <td>{{ c.nombre }}</td>
+              {% for a in anios_cols %}
+              {% set v = c.saldos.get(a|string, 0) or 0 %}
+              <td class="text-end {{ 'text-success' if v > 0 else ('text-danger' if v < 0 else 'text-muted') }}">{{ "{:,.0f}".format(v).replace(",", ".") }}</td>
+              {% endfor %}
+              {% set tc = c.total_cartera or 0 %}
+              <td class="text-end fw-bold {{ 'text-success' if tc > 0 else ('text-danger' if tc < 0 else 'text-muted') }}">{{ "{:,.0f}".format(tc).replace(",", ".") }}</td>
+              <td>{{ c.notif }}</td>
+              <td>{{ c.saldo }}</td>
+              {% for m in range(1, 13) %}
+              {% set vm = (c.meses or {}).get(m|string, 0) or 0 %}
+              <td class="text-end {{ 'text-success' if vm > 0 else ('text-danger' if vm < 0 else 'text-muted') }}">{{ "{:,.0f}".format(vm).replace(",", ".") }}</td>
+              {% endfor %}
+            </tr>
+            {% endfor %}
+          </tbody>
+          <tfoot>
+            <tr class="table-success fw-bold">
+              <td colspan="3">TOTAL SALDO A FAVOR CLIENTES ESPECIALES</td>
+              {% for a in anios_cols %}
+              <td class="text-end">{{ "{:,.0f}".format(cartera.total_favor.get(a|string, 0) or 0).replace(",", ".") }}</td>
+              {% endfor %}
+              <td class="text-end">{{ "{:,.0f}".format(cartera.total_favor.get('total', 0) or 0).replace(",", ".") }}</td>
+              <td colspan="2"></td>
+              {% for m in range(1, 13) %}
+              <td class="text-end">{{ "{:,.0f}".format(total_mes_favor.get(m, 0) or 0).replace(",", ".") }}</td>
+              {% endfor %}
+            </tr>
+            <tr class="table-danger fw-bold">
+              <td colspan="3">TOTAL SALDO POR PAGAR</td>
+              {% for a in anios_cols %}
+              <td class="text-end">{{ "{:,.0f}".format(cartera.total_pagar.get(a|string, 0) or 0).replace(",", ".") }}</td>
+              {% endfor %}
+              <td class="text-end">{{ "{:,.0f}".format(cartera.total_pagar.get('total', 0) or 0).replace(",", ".") }}</td>
+              <td colspan="2"></td>
+              {% for m in range(1, 13) %}
+              <td class="text-end">{{ "{:,.0f}".format(total_mes_pagar.get(m, 0) or 0).replace(",", ".") }}</td>
+              {% endfor %}
+            </tr>
+          </tfoot>
+        </table>
+      </div>
+    </div>
+
+    <!-- Meses de años cerrados (colapsables, junto a su año) -->
+    {% for h in hist %}
+    <details class="card border-0 shadow-sm mb-4">
+      <summary class="card-header bg-secondary text-white" style="cursor:pointer;list-style:none">
+        <h6 class="mb-0 d-inline"><i class="bi bi-folder2-open"></i> Meses {{ h.anio }} — guardados en la columna {{ h.anio }} <span class="badge bg-light text-dark ms-2">{{ h.filas|length }} cuentas</span></h6>
+        <span class="small text-white-50 ms-2">(clic para ver)</span>
+      </summary>
+      <div class="card-body p-0" style="max-height:420px;overflow:auto">
+        <table class="table table-sm table-striped table-hover mb-0" style="font-size:0.78rem">
+          <thead class="table-dark align-middle sticky-top">
+            <tr>
+              <th style="width:36px">#</th>
+              <th>ID Cuenta</th>
+              <th>Nombre</th>
+              {% for m in range(1, 13) %}
+              <th class="text-end">{{ MESES[m] }} {{ h.anio }}</th>
+              {% endfor %}
+            </tr>
+          </thead>
+          <tbody>
+            {% for c in h.filas %}
+            <tr>
+              <td class="fw-bold text-muted">{{ loop.index }}</td>
+              <td>{{ c.id }}</td>
+              <td>{{ c.nombre }}</td>
+              {% for m in range(1, 13) %}
+              {% set vm = (c.meses or {}).get(m|string, 0) or 0 %}
+              <td class="text-end {{ 'text-success' if vm > 0 else ('text-danger' if vm < 0 else 'text-muted') }}">{{ "{:,.0f}".format(vm).replace(",", ".") }}</td>
+              {% endfor %}
+            </tr>
+            {% endfor %}
+          </tbody>
+          <tfoot>
+            <tr class="table-success fw-bold">
+              <td colspan="3">TOTAL A FAVOR — MESES {{ h.anio }}</td>
+              {% for m in range(1, 13) %}
+              <td class="text-end">{{ "{:,.0f}".format(h.fav.get(m, 0) or 0).replace(",", ".") }}</td>
+              {% endfor %}
+            </tr>
+            <tr class="table-danger fw-bold">
+              <td colspan="3">TOTAL POR PAGAR — MESES {{ h.anio }}</td>
+              {% for m in range(1, 13) %}
+              <td class="text-end">{{ "{:,.0f}".format(h.pag.get(m, 0) or 0).replace(",", ".") }}</td>
+              {% endfor %}
+            </tr>
+          </tfoot>
+        </table>
+      </div>
+    </details>
+    {% endfor %}
+
+    <!-- Variación interanual -->
+    {% if cartera.get('variacion') %}
+    <div class="card border-0 shadow-sm mb-4">
+      <div class="card-header bg-dark text-white"><h6 class="mb-0"><i class="bi bi-arrow-repeat"></i> Variación Interanual del Saldo</h6></div>
+      <div class="card-body p-0">
+        <table class="table table-sm table-hover mb-0" style="font-size:0.82rem">
+          <thead class="table-dark">
+            <tr>
+              <th>Periodo</th>
+              {% for a in anios_cols[1:] %}
+              <th class="text-end">{{ a-1 }} → {{ a }}</th>
+              {% endfor %}
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td class="fw-bold">Var. Interanual Total</td>
+              {% for a in anios_cols[1:] %}
+              {% set v = cartera.variacion.get(a|string, cartera.variacion.get(a)) %}
+              <td class="text-end {{ 'text-success' if v is not none and v < 0 else ('text-danger' if v is not none and v > 0 else 'text-muted') }}">
+                {% if v is none %}—{% else %}{{ "+%.2f"|format(v*100) if v > 0 else "%.2f"|format(v*100) }}%{% endif %}
+              </td>
+              {% endfor %}
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+    {% endif %}
+
+    <!-- Retirados 2023 -->
+    {% if cartera.get('retirados_2023') %}
+    <div class="card border-0 shadow-sm mb-4">
+      <div class="card-header bg-secondary text-white"><h6 class="mb-0"><i class="bi bi-person-x"></i> Retirados 2023</h6></div>
+      <div class="card-body p-0">
+        <table class="table table-sm table-striped mb-0" style="font-size:0.82rem">
+          <thead class="table-dark"><tr><th style="width:40px">#</th><th>ID Cuenta</th><th>Nombre</th></tr></thead>
+          <tbody>
+            {% for r in cartera.retirados_2023 %}
+            <tr><td>{{ r.item }}</td><td>{{ r.id }}</td><td>{{ r.nombre }}</td></tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+    {% endif %}
+
+    <!-- Sin viabilidad -->
+    {% if cartera.get('sin_viabilidad') %}
+    <div class="card border-0 shadow-sm mb-4">
+      <div class="card-header bg-danger text-white"><h6 class="mb-0"><i class="bi bi-x-circle"></i> Cuentas Sin Viabilidad</h6></div>
+      <div class="card-body p-0" style="max-height:360px;overflow:auto">
+        <table class="table table-sm table-striped mb-0" style="font-size:0.78rem">
+          <thead class="table-dark align-middle">
+            <tr>
+              <th style="width:36px">#</th>
+              <th>ID Cuenta</th>
+              <th>Nombre</th>
+              <th class="text-end">2019</th>
+              <th class="text-end">2020</th>
+              <th class="text-end">2021</th>
+              <th class="text-end">2022</th>
+              <th class="text-end">2023</th>
+              <th class="text-end">2024</th>
+              <th class="text-end">TOTAL</th>
+              <th>Observación</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for c in cartera.sin_viabilidad %}
+            <tr>
+              <td class="fw-bold text-muted">{{ c.item }}</td>
+              <td>{{ c.id }}</td>
+              <td>{{ c.nombre }}</td>
+              {% for a in [2019, 2020, 2021, 2022, 2023, 2024] %}
+              {% set v = c.saldos.get(a|string, 0) or 0 %}
+              <td class="text-end {{ 'text-success' if v > 0 else ('text-danger' if v < 0 else 'text-muted') }}">{{ "{:,.0f}".format(v).replace(",", ".") }}</td>
+              {% endfor %}
+              <td class="text-end fw-bold">{{ "{:,.0f}".format(c.total_cartera or 0).replace(",", ".") }}</td>
+              <td>{{ c.observacion }}</td>
+            </tr>
+            {% endfor %}
+          </tbody>
+          {% set sv = cartera.get('sin_viab_totales') or {} %}
+          {% if sv %}
+          <tfoot>
+            <tr class="table-success fw-bold">
+              <td colspan="3">TOTAL SALDO A FAVOR (SV)</td>
+              {% for a in [2019, 2020, 2021, 2022, 2023, 2024] %}
+              <td class="text-end">{{ "{:,.0f}".format(sv.favor.get(a|string, 0) or 0).replace(",", ".") }}</td>
+              {% endfor %}
+              <td class="text-end">{{ "{:,.0f}".format(sv.favor.get('total', 0) or 0).replace(",", ".") }}</td>
+              <td></td>
+            </tr>
+            <tr class="table-danger fw-bold">
+              <td colspan="3">TOTAL SALDO POR PAGAR (SV)</td>
+              {% for a in [2019, 2020, 2021, 2022, 2023, 2024] %}
+              <td class="text-end">{{ "{:,.0f}".format(sv.pagar.get(a|string, 0) or 0).replace(",", ".") }}</td>
+              {% endfor %}
+              <td class="text-end">{{ "{:,.0f}".format(sv.pagar.get('total', 0) or 0).replace(",", ".") }}</td>
+              <td></td>
+            </tr>
+          </tfoot>
+          {% endif %}
+        </table>
+      </div>
+    </div>
+    {% endif %}
+
+    <!-- Retirados 2025 -->
+    {% if cartera.get('retirados_2025') %}
+    <div class="card border-0 shadow-sm mb-4">
+      <div class="card-header bg-secondary text-white"><h6 class="mb-0"><i class="bi bi-person-x"></i> Retirados 2025</h6></div>
+      <div class="card-body p-0">
+        <table class="table table-sm table-striped mb-0" style="font-size:0.82rem">
+          <thead class="table-dark"><tr><th style="width:40px">#</th><th>ID Cuenta</th><th>Nombre</th><th>Observación</th></tr></thead>
+          <tbody>
+            {% for r in cartera.retirados_2025 %}
+            <tr><td>{{ r.item }}</td><td>{{ r.id }}</td><td>{{ r.nombre }}</td><td>{{ r.observacion }}</td></tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+    {% endif %}
+
+    {% endif %}
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="{{ url_for('static', filename='filter_widget.js') }}?v=20260916"></script>
+<script>
+initColumnFilters({
+  bodySel: '#detailBody',
+  cols: {{ flt_cols }},
+  labels: {{ flt_labels|tojson }},
+  countEl: 'filaCount'
+});
+</script>
+{% endblock %}

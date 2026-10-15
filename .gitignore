@@ -1,0 +1,35 @@
+# ================= Python =================
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+.venv/
+venv/
+env/
+ENV/
+
+# ================= Base de datos local =================
+# La BD SQLite contiene TODA la información (informes, cartera, usuarios).
+# NO se sube a git: cada ambiente usa la suya o una BD en la nube.
+backend/instance/
+*.db
+*.sqlite
+*.sqlite3
+
+# ================= Archivos subidos y generados =================
+# Excel originales con datos de usuarios + reportes generados. Sensibles.
+backend/uploads/
+backend/exports/
+# Copias de seguridad locales (contienen la BD). No van a git.
+backend/respaldos/
+
+# ================= Entorno / sistema =================
+.env
+.env.*
+!.env.example
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+*.log

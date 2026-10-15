@@ -1,0 +1,912 @@
+{% extends "base.html" %}
+{% block titulo %}Informe General F&amp;R{% endblock %}
+
+{% block contenido %}
+<div class="row justify-content-center">
+  <div class="col-lg-11">
+
+    <div class="d-flex justify-content-between align-items-center mb-4">
+      <h3 class="fw-bold text-dark">
+        <i class="bi bi-bar-chart-line"></i> Informe Facturación y Recaudo — Imp. Alumbrado Público
+        {% if periodo %}<span class="badge bg-info text-dark ms-2">{{ municipio }} · {{ comercializadora }} · {{ periodo }}</span>{% endif %}
+      </h3>
+      <div class="d-flex gap-2">
+        {% if report_id %}
+        <a href="{{ url_for('main.descargar_excel', report_id=report_id) }}" class="btn btn-success">
+          <i class="bi bi-file-earmark-excel"></i> Excel Profesional
+        </a>
+        <a href="{{ url_for('main.descargar_word', report_id=report_id, tipo='general') }}" class="btn btn-primary">
+          <i class="bi bi-file-earmark-word"></i> Word General
+        </a>
+        {% else %}
+        <a href="{{ url_for('main.descargar_excel') }}" class="btn btn-success">
+          <i class="bi bi-file-earmark-excel"></i> Excel Profesional
+        </a>
+        <a href="{{ url_for('main.descargar_word', tipo='general') }}" class="btn btn-primary">
+          <i class="bi bi-file-earmark-word"></i> Word General
+        </a>
+        {% endif %}
+      </div>
+    </div>
+
+    {% if es_emsa %}
+    <!-- ===== Informe estilo hoja FyR (Villavicencio/EMSA) ===== -->
+    {% set _t = fyr["TOTAL"] %}
+    {% set _nt = _t["n"][2]|int %}
+    {% set _ft = _t["fact"][2] %}
+    {% set _rt = _t["rec"][2] %}
+    {% set _bt = _t["base"][2] %}
+    {% set _kt = _t["kwh"][2] %}
+
+    <!-- Resumen ejecutivo -->
+    <div class="card border-0 shadow-sm mb-4">
+      <div class="card-header bg-dark text-white"><h6 class="mb-0">Resumen ejecutivo</h6></div>
+      <div class="card-body p-0">
+        <table class="table table-sm table-hover mb-0 tabla-compacta">
+          <tbody>
+            <tr><td class="fw-bold">Total de cuentas / usuarios</td><td class="text-end fw-bold">{{ "{:,.0f}".format(_nt).replace(",", ".") }}</td></tr>
+            <tr><td class="fw-bold">Consumo de energía facturado (kWh)</td><td class="text-end fw-bold">{{ "{:,.0f}".format(_kt).replace(",", ".") }}</td></tr>
+            <tr><td class="fw-bold">Base gravable – valor consumo de energía ($)</td><td class="text-end fw-bold">${{ "{:,.0f}".format(_bt).replace(",", ".") }}</td></tr>
+            <tr><td class="fw-bold">Impuesto de alumbrado público facturado ($)</td><td class="text-end fw-bold">${{ "{:,.0f}".format(_ft).replace(",", ".") }}</td></tr>
+            <tr><td class="fw-bold">Impuesto de alumbrado público recaudado ($)</td><td class="text-end fw-bold">${{ "{:,.0f}".format(_rt).replace(",", ".") }}</td></tr>
+            <tr><td class="fw-bold">% Recaudo / Facturación</td><td class="text-end fw-bold">{{ "%.1f"|format(100*_rt/_ft) if _ft else "0.0" }}%</td></tr>
+            <tr><td class="fw-bold">% Facturación / Base gravable (tarifa efectiva)</td><td class="text-end fw-bold">{{ "%.1f"|format(100*_ft/_bt) if _bt else "0.0" }}%</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    {% macro tabla_zona(titulo, met, fmt, dinero=false) %}
+    <div class="card border-0 shadow-sm mb-4">
+      <div class="card-header bg-secondary text-white"><h6 class="mb-0">{{ titulo }}</h6></div>
+      <div class="card-body p-0">
+        <table class="table table-sm table-striped table-hover mb-0 tabla-compacta">
+          <thead class="table-dark">
+            <tr><th>Clasificación</th><th class="text-end">Urbana</th><th class="text-end">Rural</th><th class="text-end">Total</th></tr>
+          </thead>
+          <tbody>
+            {% for k in fyr_orden %}
+            {% set v = fyr[k][met] %}
+            <tr class="{{ 'table-warning fw-bold' if k == 'TOTAL' else ('fw-bold' if k == 'Subtotal Residencial' else '') }}">
+              <td>{{ k }}</td>
+              {% for x in v %}
+              <td class="text-end">{% if dinero %}${% endif %}{{ "{:,.0f}".format(x).replace(",", ".") }}</td>
+              {% endfor %}
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+    {% endmacro %}
+
+    {{ tabla_zona("1. Cantidad de cuentas / usuarios por clasificación y zona", "n", none) }}
+    {{ tabla_zona("2. Valores facturados ($) por clasificación y zona", "fact", none, true) }}
+    {{ tabla_zona("3. Valores recaudados ($) por clasificación y zona", "rec", none, true) }}
+
+    <!-- 4. Consumo -->
+    <div class="card border-0 shadow-sm mb-4">
+      <div class="card-header bg-secondary text-white"><h6 class="mb-0">4. Consumo de energía: base gravable vs facturación</h6></div>
+      <div class="card-body p-0">
+        <table class="table table-sm table-striped table-hover mb-0 tabla-compacta">
+          <thead class="table-dark">
+            <tr><th>Clasificación</th><th class="text-end">Base gravable – consumo energía ($)</th><th class="text-end">Impuesto facturado ($)</th><th class="text-end">Impuesto / Base (%)</th><th class="text-end">Consumo (kWh)</th></tr>
+          </thead>
+          <tbody>
+            {% for k in fyr_orden %}
+            {% set b = fyr[k]["base"][2] %}{% set f = fyr[k]["fact"][2] %}{% set w = fyr[k]["kwh"][2] %}
+            <tr class="{{ 'table-warning fw-bold' if k == 'TOTAL' else ('fw-bold' if k == 'Subtotal Residencial' else '') }}">
+              <td>{{ k }}</td>
+              <td class="text-end">${{ "{:,.0f}".format(b).replace(",", ".") }}</td>
+              <td class="text-end">${{ "{:,.0f}".format(f).replace(",", ".") }}</td>
+              <td class="text-end">{{ "%.1f"|format(100*f/b) if b else "0.0" }}%</td>
+              <td class="text-end">{{ "{:,.0f}".format(w).replace(",", ".") }}</td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- 5. Recaudo vs facturación -->
+    <div class="card border-0 shadow-sm mb-4">
+      <div class="card-header bg-secondary text-white"><h6 class="mb-0">5. Recaudo vs facturación (por clasificación)</h6></div>
+      <div class="card-body p-0">
+        <table class="table table-sm table-striped table-hover mb-0 tabla-compacta">
+          <thead class="table-dark">
+            <tr><th>Clasificación</th><th class="text-end">Impuesto facturado ($)</th><th class="text-end">Impuesto recaudado ($)</th><th class="text-end">Diferencia recaudo-factura ($)</th><th class="text-end">% Recaudo</th></tr>
+          </thead>
+          <tbody>
+            {% for k in fyr_orden %}
+            {% set f = fyr[k]["fact"][2] %}{% set r = fyr[k]["rec"][2] %}{% set d = r - f %}
+            <tr class="{{ 'table-warning fw-bold' if k == 'TOTAL' else ('fw-bold' if k == 'Subtotal Residencial' else '') }}">
+              <td>{{ k }}</td>
+              <td class="text-end">${{ "{:,.0f}".format(f).replace(",", ".") }}</td>
+              <td class="text-end">${{ "{:,.0f}".format(r).replace(",", ".") }}</td>
+              <td class="text-end {{ 'text-danger' if d < 0 else 'text-success' }}">${{ "{:,.0f}".format(d).replace(",", ".") }}</td>
+              <td class="text-end fw-bold">{{ "%.1f"|format(100*r/f) if f else "0.0" }}%</td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- Notas -->
+    <div class="card border-0 shadow-sm mb-4">
+      <div class="card-body">
+        <h6 class="fw-bold">Notas:</h6>
+        <ul class="mb-0 small">
+          <li>Fuente: archivos de facturación y recaudo del periodo {{ periodo }} ({{ "{:,.0f}".format(_nt).replace(",", ".") }} cuentas procesadas).</li>
+          <li>Base gravable = valor del consumo de energía de cada cuenta.</li>
+          <li>"Otros" agrupa las cuentas que no clasifican como Residencial, Comercial, Oficial o Industrial.</li>
+          {% if _rt > _ft %}
+          <li>El recaudo total (${{ "{:,.0f}".format(_rt).replace(",", ".") }}) supera la facturación (${{ "{:,.0f}".format(_ft).replace(",", ".") }}) por pagos de periodos anteriores u otros conceptos.</li>
+          {% endif %}
+        </ul>
+      </div>
+    </div>
+
+    <!-- Gráficas hoja FyR -->
+    <div class="row g-4 mb-4">
+      <div class="col-lg-6">
+        <div class="card border-0 shadow-sm h-100">
+          <div class="card-header"><h6 class="mb-0">Cuentas / usuarios por clasificación</h6></div>
+          <div class="card-body"><canvas id="chartFyrPieClas" height="120"></canvas></div>
+        </div>
+      </div>
+      <div class="col-lg-6">
+        <div class="card border-0 shadow-sm h-100">
+          <div class="card-header"><h6 class="mb-0">Distribución de cuentas: Urbana vs Rural</h6></div>
+          <div class="card-body"><canvas id="chartFyrZona" height="120"></canvas></div>
+        </div>
+      </div>
+    </div>
+    <div class="row g-4 mb-4">
+      <div class="col-lg-6">
+        <div class="card border-0 shadow-sm h-100">
+          <div class="card-header"><h6 class="mb-0">Cuentas residenciales por estrato</h6></div>
+          <div class="card-body"><canvas id="chartFyrEstrato" height="120"></canvas></div>
+        </div>
+      </div>
+      <div class="col-lg-6">
+        <div class="card border-0 shadow-sm h-100">
+          <div class="card-header"><h6 class="mb-0">% Recaudo por clasificación</h6></div>
+          <div class="card-body"><canvas id="chartFyrPct" height="120"></canvas></div>
+        </div>
+      </div>
+    </div>
+    <div class="row g-4 mb-4">
+      <div class="col-lg-12">
+        <div class="card border-0 shadow-sm h-100">
+          <div class="card-header"><h6 class="mb-0">Facturación vs Recaudo por clasificación ($)</h6></div>
+          <div class="card-body"><canvas id="chartFyrFactRec" height="140"></canvas></div>
+        </div>
+      </div>
+    </div>
+
+    {% else %}
+    <div class="row g-3 mb-4">
+      <div class="col-md-3">
+        <div class="card border-0 shadow text-bg-primary">
+          <div class="card-body text-center">
+            <div class="fs-4 fw-bold">${{ "{:,.0f}".format(data.f.total_imp).replace(",", ".") }}</div>
+            <small>Imp. Alumbrado Público</small>
+          </div>
+        </div>
+      </div>
+      <div class="col-md-3">
+        <div class="card border-0 shadow text-bg-success">
+          <div class="card-body text-center">
+            <div class="fs-4 fw-bold">${{ "{:,.0f}".format(data.f.total_consumo).replace(",", ".") }}</div>
+            <small>Consumo Energía</small>
+          </div>
+        </div>
+      </div>
+      <div class="col-md-3">
+        <div class="card border-0 shadow text-bg-info">
+          <div class="card-body text-center">
+            <div class="fs-4 fw-bold">{{ "{:,.0f}".format(data.f.total_kwh).replace(",", ".") }}</div>
+            <small>Consumo Total (kWh)</small>
+          </div>
+        </div>
+      </div>
+      <div class="col-md-3">
+        <div class="card border-0 shadow text-bg-warning">
+          <div class="card-body text-center">
+            <div class="fs-4 fw-bold">${{ "{:,.0f}".format(data.r.total_valor).replace(",", ".") }}</div>
+            <small>Recaudo A.P.</small>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Estadísticas Generales + Banderas -->
+    <div class="row g-4 mb-4">
+      <div class="col-lg-6">
+        <div class="card border-0 shadow-sm h-100">
+          <div class="card-header bg-primary text-white">
+            <h6 class="mb-0"><i class="bi bi-speedometer2"></i> Estadísticas Generales — Facturación</h6>
+          </div>
+          <div class="card-body p-0">
+            <table class="table table-sm table-hover mb-0">
+              <thead class="table-light"><tr><th>Concepto</th><th class="text-end">Valor</th></tr></thead>
+              <tbody>
+                {% for k, v in data.estad_general.items() %}
+                <tr><td>{{ k }}</td><td class="text-end fw-bold">{{ v }}</td></tr>
+                {% endfor %}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
+      <div class="col-lg-6">
+        <div class="card border-0 shadow-sm h-100">
+          <div class="card-header bg-dark text-white">
+            <h6 class="mb-0"><i class="bi bi-flag"></i> Resumen de Banderas</h6>
+          </div>
+          <div class="card-body p-0">
+            <table class="table table-sm table-hover mb-0">
+              <thead class="table-dark">
+                <tr><th>Bandera</th><th class="text-end">Cant.</th><th>Imp.</th><th>Cons.</th><th>Descripción</th></tr>
+              </thead>
+              <tbody>
+                {% for b in data.banderas %}
+                <tr>
+                  <td><small>{{ b[0] }}</small></td>
+                  <td class="text-end fw-bold">{{ b[1] }}</td>
+                  <td class="text-center">{{ b[2] }}</td>
+                  <td class="text-center">{{ b[3] }}</td>
+                  <td><small class="text-muted">{{ b[4] }}</small></td>
+                </tr>
+                {% endfor %}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Resumen Financiero -->
+    <div class="card border-0 shadow-sm mb-4">
+      <div class="card-header bg-secondary text-white">
+        <h6 class="mb-0"><i class="bi bi-cash-stack"></i> Resumen Financiero</h6>
+      </div>
+      <div class="card-body p-0">
+        <table class="table table-hover mb-0">
+          <thead class="table-light">
+            <tr><th>Concepto</th><th class="text-end">Base Original</th><th class="text-end">Base Depurada</th><th class="text-end">Diferencia</th></tr>
+          </thead>
+          <tbody>
+            {% for r in data.resumen_financiero %}
+            <tr>
+              <td class="fw-bold">{{ r[0] }}</td>
+              <td class="text-end">{{ r[1] }}</td>
+              <td class="text-end">{{ r[2] }}</td>
+              <td class="text-end text-danger">{{ r[3] }}</td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- Desglose por Clase -->
+    <div class="card border-0 shadow-sm mb-4">
+      <div class="card-header bg-info text-white">
+        <h6 class="mb-0"><i class="bi bi-people"></i> Desglose por Clase de Cliente</h6>
+      </div>
+      <div class="card-body p-0">
+        <table class="table table-hover mb-0">
+          <thead class="table-info">
+            <tr><th>Clase</th><th class="text-end">Cuentas</th><th class="text-end">Imp. Alumbrado ($)</th><th class="text-end">Consumo ($)</th><th class="text-end">Consumo (kWh)</th></tr>
+          </thead>
+          <tbody>
+            {% for r in data.clase_tabla %}
+            <tr>
+              <td class="fw-bold">{{ r[0] }}</td>
+              <td class="text-end">{{ "{:,.0f}".format(r[1]).replace(",", ".") }}</td>
+              <td class="text-end">${{ "{:,.0f}".format(r[2]).replace(",", ".") }}</td>
+              <td class="text-end">${{ "{:,.0f}".format(r[3]).replace(",", ".") }}</td>
+              <td class="text-end">{{ "{:,.0f}".format(r[4]).replace(",", ".") }}</td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- Recaudo + Consolidado -->
+    <div class="row g-4 mb-4">
+      <div class="col-lg-5">
+        <div class="card border-0 shadow-sm h-100">
+          <div class="card-header bg-success text-white">
+            <h6 class="mb-0"><i class="bi bi-cash-coin"></i> Estadísticas Generales — Recaudo</h6>
+          </div>
+          <div class="card-body p-0">
+            <table class="table table-sm table-hover mb-0">
+              <thead class="table-light"><tr><th>Concepto</th><th class="text-end">Valor</th></tr></thead>
+              <tbody>
+                {% for k, v in data.estad_recaudo.items() %}
+                <tr><td>{{ k }}</td><td class="text-end fw-bold">{{ v }}</td></tr>
+                {% endfor %}
+              </tbody>
+            </table>
+          </div>
+          <div class="card-footer">
+            <table class="table table-sm mb-0">
+              <thead><tr><th>Concepto</th><th>Base</th><th>Dep.</th><th>Dif.</th></tr></thead>
+              <tbody>
+                {% for r in data.resumen_recaudo %}
+                <tr><td>{{ r[0] }}</td><td>{{ r[1] }}</td><td>{{ r[2] }}</td><td class="text-danger">{{ r[3] }}</td></tr>
+                {% endfor %}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
+      <div class="col-lg-7">
+        <div class="card border-0 shadow-sm h-100">
+          <div class="card-header bg-dark text-white">
+            <h6 class="mb-0"><i class="bi bi-scale"></i> Consolidado Fact. vs Recaudo — Eficacia</h6>
+          </div>
+          <div class="card-body p-0">
+            <table class="table table-hover mb-0">
+              <thead class="table-dark">
+                <tr><th>Clasificación</th><th class="text-end">Facturación</th><th class="text-end">Recaudo</th><th class="text-end">Diferencia</th><th class="text-end">Eficacia</th></tr>
+              </thead>
+              <tbody>
+                {% for r in data.consolidado %}
+                <tr class="{{ 'table-warning fw-bold' if r[0] == 'TOTAL' else '' }}">
+                  <td>{{ r[0] }}</td>
+                  <td class="text-end">${{ "{:,.0f}".format(r[1]).replace(",", ".") }}</td>
+                  <td class="text-end">${{ "{:,.0f}".format(r[2]).replace(",", ".") }}</td>
+                  <td class="text-end text-danger">${{ "{:,.0f}".format(r[3]).replace(",", ".") }}</td>
+                  <td class="text-end fw-bold">{{ "%.0f"|format(r[4]*100) }}%</td>
+                </tr>
+                {% endfor %}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Gráficos -->
+    <div class="row g-4 mb-4">
+      <div class="col-lg-6">
+        <div class="card border-0 shadow-sm h-100">
+          <div class="card-header"><h6 class="mb-0">Facturación vs Recaudo por Clasificación</h6></div>
+          <div class="card-body">
+            <canvas id="chartConsol" height="170"></canvas>
+            <div class="text-center small text-muted mt-2" id="txtTotalConsol"></div>
+          </div>
+        </div>
+      </div>
+      <div class="col-lg-3">
+        <div class="card border-0 shadow-sm h-100">
+          <div class="card-header"><h6 class="mb-0">Distribución de Cuentas por Clase</h6></div>
+          <div class="card-body"><canvas id="chartClases" height="120"></canvas></div>
+        </div>
+      </div>
+      <div class="col-lg-3">
+        <div class="card border-0 shadow-sm h-100">
+          <div class="card-header"><h6 class="mb-0">Cuentas por Sector</h6></div>
+          <div class="card-body">
+            <canvas id="chartSector" height="120"></canvas>
+            <div class="text-center small text-muted mt-2" id="txtTotalSector"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+  </div>
+</div>
+{% endif %}
+
+    <!-- Detalle cuentas (compartido: todas las filas con páginas y filtros Excel) -->
+    <div class="row justify-content-center">
+      <div class="col-lg-11">
+    <div class="card border-0 shadow-sm mb-4">
+      <div class="card-header bg-secondary text-white d-flex justify-content-between align-items-center">
+        <h6 class="mb-0"><i class="bi bi-table"></i> Detalle Cuentas</h6>
+        <span class="badge bg-light text-dark" id="genCount">… cuentas</span>
+      </div>
+      <div class="card-body p-0" style="max-height:500px;overflow:auto;min-height:220px">
+        <table class="table table-sm table-striped table-hover mb-0" style="font-size:0.82rem">
+          <thead class="table-dark sticky-top">
+            <tr><th>#</th><th>ID</th><th>Nombre</th><th>Clase</th><th>Sector</th><th class="text-end">Imp.($)</th><th class="text-end">Cons.($)</th><th class="text-end">kWh</th><th class="text-end">Valor Rec.($)</th></tr>
+            <tr class="filter-row">
+              {% for i in range(0, 9) %}
+              <th class="text-center">{% if i > 0 %}<button type="button" class="btn btn-sm btn-light flt-btn" data-tabla="gen" data-col="{{ i }}" title="Filtrar columna"><i class="bi bi-funnel"></i></button>{% endif %}</th>
+              {% endfor %}
+            </tr>
+          </thead>
+          <tbody id="detailGenBody">
+            <tr><td colspan="9" class="text-center text-muted">Cargando…</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <div class="card-footer d-flex flex-wrap justify-content-between align-items-center gap-2">
+        <span class="small text-muted" id="pgInfoGen"></span>
+        <div class="d-flex align-items-center gap-2">
+          <div class="btn-group btn-group-sm" role="group">
+            <button type="button" class="btn btn-outline-secondary" id="pgPrevGen">« Anterior</button>
+            <button type="button" class="btn btn-outline-secondary" id="pgNextGen">Siguiente »</button>
+          </div>
+          {% if report_id %}
+          <a class="small" href="{{ url_for('main.descargar_excel', report_id=report_id) }}">Ver todas en Excel</a>
+          {% else %}
+          <a class="small" href="{{ url_for('main.descargar_excel') }}">Ver todas en Excel</a>
+          {% endif %}
+        </div>
+      </div>
+    </div>
+      </div>
+    </div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+function fmtN(n){ return Math.round(n).toLocaleString('es-CO'); }
+function fmtCorto(n){
+  const a = Math.abs(n);
+  if (a >= 1e6) return '$' + (n/1e6).toLocaleString('es-CO',{maximumFractionDigits:1}) + 'M';
+  if (a >= 1e3) return '$' + (n/1e3).toLocaleString('es-CO',{maximumFractionDigits:0}) + 'm';
+  return '$' + fmtN(n);
+}
+const fmtFull = n => '$' + fmtN(n);
+const rotuloBarras = {
+  id:'rotuloBarras',
+  afterDatasetsDraw(chart, args, opts){
+    const fmt = opts.fmt || fmtCorto;
+    const {ctx} = chart;
+    chart.data.datasets.forEach((ds,di)=>{
+      const meta = chart.getDatasetMeta(di);
+      meta.data.forEach((pt,i)=>{
+        const v = ds.data[i];
+        if (v == null || isNaN(Number(v))) return;
+        ctx.save();
+        ctx.translate(pt.x, pt.y + (pt.base - pt.y) / 2);
+        ctx.rotate(-Math.PI / 2);
+        ctx.font = 'bold 10px sans-serif';
+        ctx.fillStyle = '#1a1a18';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText(fmt(v), 0, 0);
+        ctx.restore();
+      });
+    });
+  }
+};
+const totalCentro = {
+  id:'totalCentro',
+  afterDraw(chart){
+    const meta = chart.getDatasetMeta(0);
+    if (!meta || !meta.data || !meta.data.length) return;
+    const pt = meta.data[0];
+    const total = chart.data.datasets[0].data.reduce((a,b)=>a + Number(b||0),0);
+    const {ctx} = chart;
+    ctx.save();
+    ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    ctx.fillStyle = '#1a1a18'; ctx.font = 'bold 18px sans-serif';
+    ctx.fillText(fmtN(total), pt.x, pt.y - 4);
+    ctx.fillStyle = '#1a1a18'; ctx.font = '11px sans-serif';
+    ctx.fillText('cuentas', pt.x, pt.y + 13);
+    ctx.restore();
+  }
+};
+
+// Tacha en la leyenda las porciones ocultas de las ruedas
+const tachaLeyenda = {
+  id:'tachaLeyenda',
+  afterDraw(chart){
+    const legend = chart.legend;
+    if (!legend || !legend.legendItems || !legend.legendHitBoxes) return;
+    const {ctx} = chart;
+    ctx.save();
+    ctx.strokeStyle = '#1a1a18';
+    ctx.lineWidth = 1.5;
+    legend.legendItems.forEach((item, i) => {
+      let oculta = item.hidden === true;
+      if (!oculta && typeof chart.getDataVisibility === 'function' && item.index != null) {
+        oculta = chart.getDataVisibility(item.index) === false;
+      }
+      if (!oculta) return;
+      const box = legend.legendHitBoxes[i];
+      if (!box) return;
+      const y = box.top + box.height / 2;
+      ctx.beginPath();
+      ctx.moveTo(box.left + box.height, y);
+      ctx.lineTo(box.left + box.width, y);
+      ctx.stroke();
+    });
+    ctx.restore();
+  }
+};
+
+// Escribe el valor dentro de cada porción de los gráficos circulares
+const rotuloPie = {
+  id:'rotuloPie',
+  afterDatasetsDraw(chart, args, opts){
+    const fmt = (opts && opts.fmt) || fmtN;
+    const {ctx} = chart;
+    chart.data.datasets.forEach((ds, di) => {
+      const meta = chart.getDatasetMeta(di);
+      (meta.data || []).forEach((pt, i) => {
+        const v = ds.data[i];
+        if (v == null || Number(v) <= 0) return;
+        if (pt.hidden) return;
+        if ((pt.endAngle - pt.startAngle) < 0.12) return;
+        const ang = (pt.startAngle + pt.endAngle) / 2;
+        const r = (pt.outerRadius + pt.innerRadius) / 2;
+        ctx.save();
+        ctx.font = 'bold 10px sans-serif';
+        ctx.fillStyle = '#1a1a18';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText(fmt(v), pt.x + Math.cos(ang) * r, pt.y + Math.sin(ang) * r);
+        ctx.restore();
+      });
+    });
+  }
+};
+
+// Clic en la leyenda tacha y oculta/muestra esa porción de la rueda
+function alternarPorcion(e, item, legend) {
+  const chart = legend.chart;
+  chart.toggleDataVisibility(item.index);
+  chart.update();
+}
+
+{% if es_emsa %}
+const FYR = {{ fyr|tojson }};
+const CLAS5 = ['Subtotal Residencial', 'Comercial', 'Oficial', 'Industrial', 'Otros'];
+const PAL5 = ['#D9CF43', '#1E7A1E', '#BFBA6B', '#A93226', '#E2DF2B'];
+const fN = k => FYR[k].n[2], fF = k => FYR[k].fact[2], fR = k => FYR[k].rec[2];
+const LEG = { position: 'right', onClick: alternarPorcion, labels: { color: '#0D0D0D', font: { size: 10 },
+  generateLabels(chart) {
+    const ds = chart.data.datasets[0];
+    return chart.data.labels.map((l, i) => ({
+      text: l + ' (' + fmtN(ds.data[i]) + ')',
+      fillStyle: ds.backgroundColor[i],
+      strokeStyle: ds.backgroundColor[i],
+      fontColor: '#0D0D0D', hidden: false, index: i
+    }));
+  } } };
+
+new Chart(document.getElementById('chartFyrPieClas'), {
+  type: 'pie',
+  data: { labels: CLAS5, datasets: [{ data: CLAS5.map(fN), backgroundColor: PAL5 }] },
+  options: { responsive: true,
+    plugins: { legend: LEG, rotuloPie: { fmt: fmtN },
+      tooltip: { callbacks: { label: (c) => ' ' + c.label + ': ' + fmtN(c.parsed) + ' cuentas' } } } },
+  plugins: [rotuloPie, tachaLeyenda]
+});
+const _zt = FYR['TOTAL'];
+new Chart(document.getElementById('chartFyrZona'), {
+  type: 'pie',
+  data: { labels: ['Urbana', 'Rural'], datasets: [{ data: [_zt.n[0], _zt.n[1]], backgroundColor: ['#D9CF43', '#1E7A1E'] }] },
+  options: { responsive: true,
+    plugins: { legend: LEG, rotuloPie: { fmt: fmtN },
+      tooltip: { callbacks: { label: (c) => ' ' + c.label + ': ' + fmtN(c.parsed) + ' cuentas' } } } },
+  plugins: [rotuloPie, tachaLeyenda]
+});
+new Chart(document.getElementById('chartFyrEstrato'), {
+  type: 'bar',
+  data: { labels: ['Estrato 1', 'Estrato 2', 'Estrato 3', 'Estrato 4', 'Estrato 5', 'Estrato 6'],
+    datasets: [{ label: 'Cuentas', data: [1, 2, 3, 4, 5, 6].map(i => FYR['Residencial – Estrato ' + i].n[2]),
+      backgroundColor: '#D9CF43' }] },
+  options: { responsive: true, scales: { y: { beginAtZero: true } },
+    plugins: { legend: { display: false }, rotuloBarras: { fmt: fmtN } } },
+  plugins: [rotuloBarras]
+});
+new Chart(document.getElementById('chartFyrFactRec'), {
+  type: 'bar',
+  data: { labels: CLAS5, datasets: [
+    { label: 'Facturado', data: CLAS5.map(fF), backgroundColor: '#D9CF43' },
+    { label: 'Recaudado', data: CLAS5.map(fR), backgroundColor: '#1E7A1E' } ] },
+  options: { responsive: true, scales: { y: { beginAtZero: true } },
+    plugins: { legend: { position: 'top' },
+      tooltip: { callbacks: { label: (c) => ' ' + c.dataset.label + ': ' + fmtCorto(c.parsed.y) } },
+      rotuloBarras: { fmt: fmtCorto } } },
+  plugins: [rotuloBarras]
+});
+new Chart(document.getElementById('chartFyrPct'), {
+  type: 'bar',
+  data: { labels: CLAS5,
+    datasets: [{ label: '% Recaudo', data: CLAS5.map(k => fF(k) ? 100 * fR(k) / fF(k) : 0),
+      backgroundColor: '#BFBA6B' }] },
+  options: { responsive: true, scales: { y: { beginAtZero: true } },
+    plugins: { legend: { display: false }, rotuloBarras: { fmt: (v) => v.toFixed(1) + '%' } } },
+  plugins: [rotuloBarras]
+});
+{% else %}
+const consolidado = {{ data.consolidado|tojson }};
+const labels = consolidado.filter(r=>r[0]!=='TOTAL').map(r=>r[0]);
+const fact = consolidado.filter(r=>r[0]!=='TOTAL').map(r=>r[1]);
+const rec = consolidado.filter(r=>r[0]!=='TOTAL').map(r=>r[2]);
+const dif = consolidado.filter(r=>r[0]!=='TOTAL').map(r=>r[3]);
+
+new Chart(document.getElementById('chartConsol'),{
+  type:'bar',
+  data:{labels,datasets:[
+    {label:'Facturación',data:fact,backgroundColor:'#D9CF43'},
+    {label:'Recaudo',data:rec,backgroundColor:'#1E7A1E'},
+    {label:'Diferencia',data:dif,backgroundColor:'#BFBA6B'}
+  ]},
+  options:{
+    responsive:true,
+    plugins:{
+      legend:{position:'top'},
+      tooltip:{callbacks:{label:(c)=>' '+c.dataset.label+': '+fmtFull(c.parsed.y)}},
+      rotuloBarras:{fmt:fmtCorto}
+    }
+  },
+  plugins:[rotuloBarras]
+});
+const tF = fact.reduce((a,b)=>a+b,0);
+const tR = rec.reduce((a,b)=>a+b,0);
+const tD = dif.reduce((a,b)=>a+b,0);
+document.getElementById('txtTotalConsol').textContent =
+  'Totales · Facturación '+fmtCorto(tF)+' · Recaudo '+fmtCorto(tR)+' · Diferencia '+fmtCorto(tD);
+
+const clases = {{ data.clase_tabla|tojson }};
+const cL = clases.filter(r=>r[0]!=='TOTAL').map(r=>r[0]);
+const cV = clases.filter(r=>r[0]!=='TOTAL').map(r=>r[1]);
+
+new Chart(document.getElementById('chartClases'),{
+  type:'doughnut',
+  data:{labels:cL,datasets:[{data:cV,backgroundColor:['#D9CF43','#1E7A1E','#BFBA6B','#A93226']}]},
+  options:{
+    responsive:true,
+    plugins:{
+legend:{position:'right',onClick:alternarPorcion,labels:{color:'#0D0D0D',font:{size:10},generateLabels(chart){
+  const ds = chart.data.datasets[0];
+  return chart.data.labels.map((l,i)=>({
+    text: l + ' (' + fmtN(ds.data[i]) + ')',
+    fillStyle: ds.backgroundColor[i],
+    strokeStyle: ds.backgroundColor[i],
+    fontColor:'#0D0D0D',
+    hidden:false, index:i
+  }));
+}}},
+      tooltip:{callbacks:{label:(c)=>' '+c.label+': '+fmtN(c.parsed)+' cuentas'}}
+    },
+    cutout:'58%'
+  },
+  plugins:[totalCentro, rotuloPie, tachaLeyenda]
+});
+
+const sectores = {{ data.sector_tabla|default([['Urbanas',0,0],['Rurales',0,0],['TOTAL',0,0]])|tojson }};
+const sL = sectores.filter(r=>r[0]!=='TOTAL').map(r=>r[0]);
+const sV = sectores.filter(r=>r[0]!=='TOTAL').map(r=>r[1]);
+
+new Chart(document.getElementById('chartSector'),{
+  type:'bar',
+  data:{labels:sL,datasets:[{label:'Cuentas',data:sV,backgroundColor:['#D9CF43','#1E7A1E']}]},
+  options:{
+    responsive:true,
+    plugins:{
+      legend:{display:false},
+      tooltip:{callbacks:{label:(c)=>' '+c.label+': '+fmtN(c.parsed.y)+' cuentas'}},
+      rotuloBarras:{fmt:fmtN}
+    },
+    scales:{y:{beginAtZero:true}}
+  },
+  plugins:[rotuloBarras]
+});
+document.getElementById('txtTotalSector').textContent =
+  'Total: '+fmtN(sV.reduce((a,b)=>a+b,0))+' cuentas';
+{% endif %}
+
+// ---- Tablas de detalle paginadas (recorren TODAS las filas de a 1.000) ----
+const REPORT_ID = {{ report_id or 0 }};
+const API_DET = REPORT_ID ? '/api/detalle/' + REPORT_ID : '/api/detalle';
+const fmtCOP = v => '$' + Math.round(Number(v) || 0).toLocaleString('es-CO');
+const fmtNum = v => Math.round(Number(v) || 0).toLocaleString('es-CO');
+const escHtml = s => String(s == null ? '' : s)
+  .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+
+function filaCuentas(r, i, base) {
+  return '<tr><td>' + (base + i + 1) + '</td><td>' + parseInt(r.Id_cliente || 0, 10) +
+    '</td><td>' + escHtml(r.Nombre) + '</td><td>' + escHtml(r.Clase) +
+    '</td><td>' + escHtml(r.Sector) +
+    '</td><td class="text-end">' + fmtCOP(r.ImpuestoAP) +
+    '</td><td class="text-end">' + fmtCOP(r['Consumo$']) +
+    '</td><td class="text-end">' + fmtNum(r.ConsumokWh) +
+    '</td><td class="text-end">' + fmtCOP(r.ValorAP) + '</td></tr>';
+}
+
+function paginador(cfg) {
+  const estado = { pagina: 1, total: 0, paginas: 1, exact: {} };
+  const cuerpo = document.getElementById(cfg.cuerpo);
+  const info = document.getElementById(cfg.info);
+  const bPrev = document.getElementById(cfg.prev);
+  const bNext = document.getElementById(cfg.next);
+  const badge = document.getElementById(cfg.badge);
+  cfg.estado = estado;
+
+  function pintarBotones() {
+    document.querySelectorAll('.flt-btn[data-tabla="' + cfg.tabla + '"]').forEach(b => {
+      const c = b.dataset.col;
+      const activo = Object.prototype.hasOwnProperty.call(estado.exact, c);
+      b.classList.toggle('btn-warning', activo);
+      b.classList.toggle('btn-light', !activo);
+      const ic = b.querySelector('i');
+      if (ic) ic.className = activo ? 'bi bi-funnel-fill' : 'bi bi-funnel';
+    });
+  }
+  function pintar(d) {
+    estado.total = d.total;
+    estado.paginas = d.paginas;
+    estado.pagina = d.pagina;
+    const base = (d.pagina - 1) * d.por_pagina;
+    cuerpo.innerHTML = d.filas.length
+      ? d.filas.map((r, i) => cfg.fila(r, i, base)).join('')
+      : '<tr><td colspan="' + cfg.cols + '" class="text-center text-muted">Sin resultados para el filtro.</td></tr>';
+    info.textContent = 'Página ' + d.pagina + ' de ' + d.paginas + ' · ' +
+      fmtNum(d.total) + ' cuentas';
+    if (badge) badge.textContent = fmtNum(d.total) + ' cuentas';
+    bPrev.disabled = d.pagina <= 1;
+    bNext.disabled = d.pagina >= d.paginas;
+    pintarBotones();
+  }
+  function cargar() {
+    info.textContent = 'Cargando…';
+    const e = {};
+    Object.keys(estado.exact).forEach(c => { e[c] = Array.from(estado.exact[c]); });
+    fetch(API_DET + '?tipo=' + cfg.tipo + '&pagina=' + estado.pagina +
+          '&por_pagina=10000&e=' + encodeURIComponent(JSON.stringify(e)))
+      .then(r => r.json())
+      .then(pintar)
+      .catch(() => { info.textContent = 'Error al cargar. Reintente.'; });
+  }
+  cfg.cargar = cargar;
+  bPrev.addEventListener('click', () => {
+    if (estado.pagina > 1) { estado.pagina--; cargar(); }
+  });
+  bNext.addEventListener('click', () => {
+    if (estado.pagina < estado.paginas) { estado.pagina++; cargar(); }
+  });
+  cargar();
+}
+
+const PAGS = {};
+PAGS.gen = { tipo: 'cuentas', tabla: 'gen', cuerpo: 'detailGenBody',
+  info: 'pgInfoGen', prev: 'pgPrevGen', next: 'pgNextGen', badge: 'genCount',
+  cols: 9, fila: filaCuentas,
+  labels: ['#', 'ID', 'Nombre', 'Clase', 'Sector', 'Imp. ($)', 'Cons. ($)', 'kWh', 'Valor Rec. ($)'] };
+paginador(PAGS.gen);
+
+// ---- Panel tipo Excel conectado al servidor (filtra TODO el reporte) ----
+const API_VAL = REPORT_ID ? '/api/valores/' + REPORT_ID : '/api/valores';
+(function () {
+  const panel = document.createElement('div');
+  panel.id = 'fltServerPanel';
+  panel.className = 'd-none shadow';
+  panel.style.cssText = 'position:fixed;z-index:3000;width:270px;max-width:86vw;background:#FFFFFF;border:1px solid #BFBFBF;border-radius:8px;font-size:0.9rem;';
+  panel.innerHTML =
+    '<div class="d-flex justify-content-between align-items-center px-2 py-1 border-bottom" style="background:#EAE88C;border-radius:8px 8px 0 0;">' +
+      '<b class="small"><span id="fsTitulo"></span> <span id="fsCuenta" class="text-muted"></span></b>' +
+      '<div class="d-flex align-items-center">' +
+        '<button type="button" class="btn btn-sm btn-link py-0" data-act="todos">Todos</button>' +
+        '<button type="button" class="btn btn-sm btn-link py-0 text-danger" data-act="ninguno">Ninguno</button>' +
+        '<button type="button" class="btn-close ms-1" data-act="close" style="font-size:0.6rem;"></button>' +
+      '</div>' +
+    '</div>' +
+    '<div class="p-2">' +
+      '<input type="text" id="fsBuscar" class="form-control form-control-sm mb-2" placeholder="Buscar valor en todo el reporte…">' +
+      '<div id="fsLista" class="flt-list" style="max-height:260px;overflow:auto;"></div>' +
+      '<div class="d-flex gap-1 mt-2">' +
+        '<button type="button" class="btn btn-sm btn-outline-secondary flex-fill" data-act="limpiar">Limpiar</button>' +
+        '<button type="button" class="btn btn-sm btn-primary flex-fill" data-act="close">Aplicar</button>' +
+      '</div>' +
+    '</div>';
+  document.body.appendChild(panel);
+  const titulo = panel.querySelector('#fsTitulo');
+  const cuenta = panel.querySelector('#fsCuenta');
+  const buscar = panel.querySelector('#fsBuscar');
+  const lista = panel.querySelector('#fsLista');
+  let cfg = null, col = null, btn = null, tBusca = null;
+
+  function setDe(colKey) {
+    const pg = PAGS[cfg.tabla];
+    if (!pg.estado.exact[colKey]) pg.estado.exact[colKey] = new Set();
+    return pg.estado.exact[colKey];
+  }
+  function cargarValores(q) {
+    lista.innerHTML = '<div class="text-muted small px-2 py-1">Buscando en todo el reporte…</div>';
+    fetch(API_VAL + '?tipo=' + cfg.tipo + '&col=' + col +
+          '&q=' + encodeURIComponent(q || '') + '&limite=200')
+      .then(r => r.json())
+      .then(d => {
+        const pg = PAGS[cfg.tabla];
+        const elegidos = pg.estado.exact[col];
+        cuenta.textContent = d.total > d.valores.length
+          ? '(' + d.valores.length + ' de ' + fmtNum(d.total) + ')'
+          : '(' + fmtNum(d.total) + ')';
+        if (!d.valores.length) {
+          lista.innerHTML = '<div class="text-muted small px-2 py-1">Sin coincidencias.</div>';
+          return;
+        }
+        lista.innerHTML = '';
+        d.valores.forEach(it => {
+          const lab = document.createElement('label');
+          lab.className = 'flt-item d-flex align-items-center px-2 py-1 rounded';
+          const cb = document.createElement('input');
+          cb.type = 'checkbox';
+          cb.className = 'form-check-input m-0';
+          cb.checked = !elegidos || elegidos.has(it.v);
+          cb.addEventListener('change', () => {
+            const s = setDe(col);
+            if (cb.checked) s.add(it.v); else s.delete(it.v);
+            pg.estado.pagina = 1;
+            pg.cargar();
+          });
+          const tx = document.createElement('span');
+          tx.className = 'ms-2 flex-grow-1';
+          tx.textContent = it.v === '' ? '(vacío)' : it.v;
+          const n = document.createElement('span');
+          n.className = 'badge bg-light text-dark ms-1';
+          n.textContent = fmtNum(it.n);
+          lab.appendChild(cb); lab.appendChild(tx); lab.appendChild(n);
+          lista.appendChild(lab);
+        });
+      })
+      .catch(() => { lista.innerHTML = '<div class="text-danger small px-2 py-1">Error al buscar.</div>'; });
+  }
+  function abrir(b, pgCfg) {
+    cfg = pgCfg; col = b.dataset.col; btn = b;
+    titulo.textContent = pgCfg.labels[col] || ('Columna ' + col);
+    buscar.value = '';
+    cargarValores('');
+    const r = b.getBoundingClientRect();
+    panel.style.left = Math.max(8, Math.min(r.left, window.innerWidth - 278)) + 'px';
+    panel.style.top = (r.bottom + 4) + 'px';
+    panel.classList.remove('d-none');
+  }
+  function cerrar() { panel.classList.add('d-none'); btn = null; }
+  buscar.addEventListener('input', () => {
+    clearTimeout(tBusca);
+    tBusca = setTimeout(() => cargarValores(buscar.value.trim()), 400);
+  });
+  panel.addEventListener('click', e => {
+    const b = e.target && e.target.closest ? e.target.closest('[data-act]') : null;
+    if (!b || !cfg) return;
+    const pg = PAGS[cfg.tabla];
+    const act = b.dataset.act;
+    if (act === 'todos' || act === 'limpiar') {
+      delete pg.estado.exact[col];
+    } else if (act === 'ninguno') {
+      pg.estado.exact[col] = new Set();
+    } else if (act === 'close') {
+      cerrar();
+      pg.estado.pagina = 1;
+      pg.cargar();
+      return;
+    }
+    pg.estado.pagina = 1;
+    pg.cargar();
+    cargarValores(buscar.value.trim());
+  });
+  document.querySelectorAll('.flt-btn[data-tabla]').forEach(b => {
+    b.addEventListener('click', ev => {
+      ev.stopPropagation();
+      const pgCfg = PAGS[b.dataset.tabla];
+      if (!panel.classList.contains('d-none') && btn === b) { panel.classList.add('d-none'); btn = null; return; }
+      abrir(b, pgCfg);
+    });
+  });
+  document.addEventListener('click', e => {
+    if (!panel.classList.contains('d-none') && btn &&
+        !(e.target.closest && (e.target.closest('#fltServerPanel') || e.target.closest('.flt-btn')))) {
+      panel.classList.add('d-none');
+      btn = null;
+    }
+  });
+})();
+</script>
+{% endblock %}

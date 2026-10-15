@@ -1,0 +1,18 @@
+# Despliegue en Render (plan gratuito). La BD va en Neon (Postgres).
+services:
+  - type: web
+    name: sistema-informes-fyr
+    runtime: python
+    buildCommand: pip install -r backend/requirements.txt
+    startCommand: gunicorn app:app --workers 1 --timeout 120 --chdir backend
+    envVars:
+      - key: FLASK_ENV
+        value: production
+      - key: SECRET_KEY
+        sync: false
+      - key: DATABASE_URL
+        sync: false
+      - key: MAX_UPLOAD_MB
+        value: 60
+      - key: CONSERVAR_ORIGINALES
+        value: 0

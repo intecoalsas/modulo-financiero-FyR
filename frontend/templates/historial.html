@@ -1,0 +1,150 @@
+{% extends "base.html" %}
+{% block titulo %}Historial — Informes F&amp;R{% endblock %}
+
+{% block contenido %}
+<div class="row justify-content-center">
+  <div class="col-lg-12">
+
+    <div class="d-flex justify-content-between align-items-center mb-4">
+      <h3 class="fw-bold text-dark">
+        <i class="bi bi-clock-history"></i> Historial de Informes
+      </h3>
+      <a href="{{ url_for('main.index') }}" class="btn btn-primary text-white">
+        <i class="bi bi-upload"></i> Subir Nuevo Informe
+      </a>
+    </div>
+
+    <!-- Filtros -->
+    <div class="card border-0 shadow-sm mb-4">
+      <div class="card-header bg-light"><h6 class="mb-0"><i class="bi bi-funnel"></i> Filtrar</h6></div>
+      <div class="card-body">
+        <form method="GET" action="{{ url_for('main.historial') }}" class="row g-3">
+          <div class="col-md-3">
+            <label class="form-label">Municipio</label>
+            <select class="form-select" name="municipio">
+              <option value="">Todos</option>
+              {% for m in municipios %}
+              <option value="{{ m.nombre }}" {% if filtro_municipio == m.nombre %}selected{% endif %}>{{ m.nombre }}</option>
+              {% endfor %}
+            </select>
+          </div>
+          <div class="col-md-3">
+            <label class="form-label">Mes</label>
+            <select class="form-select" name="mes">
+              <option value="">Todos</option>
+              {% for i in range(1, 13) %}
+              <option value="{{ i }}" {% if filtro_mes|string == i|string %}selected{% endif %}>{{ meses[i] }}</option>
+              {% endfor %}
+            </select>
+          </div>
+          <div class="col-md-3 d-flex align-items-end">
+            <button type="submit" class="btn btn-primary w-100"><i class="bi bi-search"></i> Filtrar</button>
+            <a href="{{ url_for('main.historial') }}" class="btn btn-outline-secondary ms-2">Limpiar</a>
+          </div>
+        </form>
+      </div>
+    </div>
+
+    <!-- Tabla de reportes -->
+    {% if reports %}
+    <div class="card border-0 shadow-sm">
+      <div class="card-body p-0">
+        <div style="max-height:600px;overflow:auto">
+          <table class="table table-hover mb-0">
+            <thead class="table-dark">
+              <tr>
+                <th>ID</th>
+                <th>Municipio</th>
+                <th>Comercializadora</th>
+                <th>Período</th>
+                <th>Fecha Subida</th>
+                <th class="text-center">Acciones</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for r in reports %}
+              <tr>
+                <td>#{{ loop.index }}</td>
+                <td><span class="badge {{ colores_municipio.get(r.municipio_nombre, 'badge-muni-6') }}">{{ r.municipio_nombre }}</span></td>
+                <td>{{ r.comercializadora_nombre }}</td>
+                <td><strong>{{ r.mes_nombre }} {{ r.anio }}</strong></td>
+                <td>{{ r.created_at|hora_col }}</td>
+                <td class="text-center">
+                  <div class="btn-group btn-group-sm" role="group">
+                    <a href="{{ url_for('main.general_id', report_id=r.id) }}" class="btn bg-primary-subtle text-primary-emphasis border-primary-subtle" title="Ver General">
+                      <i class="bi bi-bar-chart-line"></i>
+                    </a>
+                    {% if r.id in con_especiales %}
+                    <a href="{{ url_for('main.especiales_id', report_id=r.id) }}" class="btn bg-warning-subtle text-warning-emphasis border-warning-subtle" title="Ver Especiales">
+                      <i class="bi bi-star"></i>
+                    </a>
+                    {% endif %}
+                    <a href="{{ url_for('main.descargar_excel', report_id=r.id) }}" class="btn bg-success-subtle text-success-emphasis border-success-subtle" title="Descargar Excel">
+                      <i class="bi bi-file-earmark-excel"></i>
+                    </a>
+                    <div class="btn-group" role="group">
+                      <a href="{{ url_for('main.descargar_word', report_id=r.id, tipo='general') }}" class="btn bg-info-subtle text-info-emphasis border-info-subtle" title="Word — Análisis General">
+                        <i class="bi bi-file-earmark-word"></i>
+                      </a>
+                      {% if r.id in con_especiales %}
+                      <a href="{{ url_for('main.descargar_word', report_id=r.id, tipo='especiales') }}" class="btn bg-secondary-subtle text-secondary-emphasis border-secondary-subtle" title="Word — Clientes Especiales">
+                        <i class="bi bi-star-fill"></i>
+                      </a>
+                      {% endif %}
+                    </div>
+                    <button type="button" class="btn bg-danger-subtle text-danger-emphasis border-danger-subtle" data-bs-toggle="modal"
+                            data-bs-target="#delModal{{ r.id }}" title="Eliminar">
+                      <i class="bi bi-trash"></i>
+                    </button>
+                  </div>
+
+                  <!-- Modal eliminar -->
+                  <div class="modal fade" id="delModal{{ r.id }}" tabindex="-1">
+                    <div class="modal-dialog">
+                      <div class="modal-content">
+                        <div class="modal-header">
+                          <h5 class="modal-title">¿Eliminar reporte #{{ r.id }}?</h5>
+                          <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                        </div>
+                        <div class="modal-body">
+                          Se eliminará: <strong>{{ r.municipio_nombre }} / {{ r.comercializadora_nombre }} — {{ r.mes_nombre }} {{ r.anio }}</strong>.
+                          Esta acción no se puede deshacer.
+                        </div>
+                        <div class="modal-footer">
+                          <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+                          <form method="POST" action="{{ url_for('main.eliminar_reporte', report_id=r.id) }}">
+                            <button type="submit" class="btn btn-danger"><i class="bi bi-trash"></i> Eliminar</button>
+                          </form>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </td>
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+    <p class="text-muted small mt-3">
+      <i class="bi bi-info-circle"></i> Total de reportes: <strong>{{ reports|length }}</strong>
+    </p>
+    {% else %}
+    <div class="card border-0 shadow-sm">
+      <div class="card-body text-center py-5">
+        <div class="display-6 text-muted mb-3"><i class="bi bi-inbox"></i></div>
+        <h5>No hay reportes guardados todavía</h5>
+        <p class="text-muted">Sube tu primer informe para comenzar a construir el historial.</p>
+        <a href="{{ url_for('main.index') }}" class="btn btn-primary text-white">
+          <i class="bi bi-upload"></i> Subir Informe
+        </a>
+      </div>
+    </div>
+    {% endif %}
+
+  </div>
+</div>
+{% endblock %}
+
+{% block footer %}{% endblock %}

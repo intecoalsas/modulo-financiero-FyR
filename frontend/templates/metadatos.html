@@ -1,0 +1,247 @@
+{% extends "base.html" %}
+{% block titulo %}Completar datos — Informes F&amp;R{% endblock %}
+
+{% block contenido %}
+<div class="row justify-content-center">
+  <div class="col-lg-7">
+    <div class="card shadow border-0 mt-2">
+      <div class="card-header bg-dark text-white">
+        <h5 class="mb-0"><i class="bi bi-clipboard-check"></i> Completar datos del informe</h5>
+      </div>
+      <div class="card-body p-4">
+        <div class="alert alert-warning d-flex align-items-center gap-2">
+          <i class="bi bi-info-circle-fill"></i>
+          <span>No fue posible reconocer automáticamente toda la información de los archivos.
+            Complete únicamente los campos marcados; el resto ya fue detectado.</span>
+        </div>
+
+        <form method="POST" action="{{ url_for('main.procesar_metadatos', t=t) }}" id="form-metadatos">
+          {% if p.falt_f or p.falt_r or not p.hay_fecha %}
+          <div class="border-start border-4 border-dark ps-3 mb-3">
+            <h6 class="fw-bold text-dark mb-1">1. Columnas de los archivos</h6>
+            <div class="text-muted small mb-3">
+              Estas columnas no se reconocieron automáticamente. Indique cómo se llaman en sus archivos;
+              la próxima vez se reconocerán solas.</div>
+
+            {% if p.falt_f %}
+            <div class="mb-3">
+              <label class="form-label fw-semibold"><i class="bi bi-receipt"></i> Archivo de facturación</label>
+              {% for clave in p.falt_f %}
+              <div class="row g-2 align-items-center mb-2">
+                <div class="col-md-5">
+                  <label class="form-label small text-muted mb-0">¿Qué columna contiene
+                    <strong>{{ ETIQUETAS.get(clave, clave) }}</strong>?</label>
+                  {% if EJEMPLOS.get(clave) %}
+                  <div class="form-text">Ejemplo: <code>{{ EJEMPLOS.get(clave) }}</code></div>
+                  {% endif %}
+                </div>
+                <div class="col-md-7">
+                  <select name="col_fact_{{ clave }}" class="form-select" required>
+                    <option value="">Seleccione la columna…</option>
+                    {% for c in p.headers_f %}
+                    <option value="{{ c }}" {% if request.form.get('col_fact_' ~ clave) == c %}selected{% endif %}>{{ c }}</option>
+                    {% endfor %}
+                  </select>
+                </div>
+              </div>
+              {% endfor %}
+            </div>
+            {% endif %}
+
+            {% if p.falt_r %}
+            <div class="mb-3">
+              <label class="form-label fw-semibold"><i class="bi bi-cash-coin"></i> Archivo de recaudo</label>
+              {% for clave in p.falt_r %}
+              <div class="row g-2 align-items-center mb-2">
+                <div class="col-md-5">
+                  <label class="form-label small text-muted mb-0">¿Qué columna contiene
+                    <strong>{{ ETIQUETAS.get(clave, clave) }}</strong>?</label>
+                  {% if EJEMPLOS.get(clave) %}
+                  <div class="form-text">Ejemplo: <code>{{ EJEMPLOS.get(clave) }}</code></div>
+                  {% endif %}
+                </div>
+                <div class="col-md-7">
+                  <select name="col_rec_{{ clave }}" class="form-select" required>
+                    <option value="">Seleccione la columna…</option>
+                    {% for c in p.headers_r %}
+                    <option value="{{ c }}" {% if request.form.get('col_rec_' ~ clave) == c %}selected{% endif %}>{{ c }}</option>
+                    {% endfor %}
+                  </select>
+                </div>
+              </div>
+              {% endfor %}
+            </div>
+            {% endif %}
+
+            {% if not p.municipio %}
+            <div class="mb-2">
+              <div class="row g-2 align-items-center mb-2">
+                <div class="col-md-5">
+                  <label class="form-label small text-muted mb-0">¿Hay una columna con el <strong>municipio</strong>? (opcional)</label>
+                </div>
+                <div class="col-md-7">
+                  <select name="municipio_col" class="form-select">
+                    <option value="__manual__" {% if not request.form.get('municipio_col') %}selected{% endif %}>
+                      Escribiré el municipio manualmente…
+                    </option>
+                    {% for c in p.headers_f + p.headers_r %}
+                    <option value="{{ c }}" {% if request.form.get('municipio_col') == c %}selected{% endif %}>{{ c }}</option>
+                    {% endfor %}
+                  </select>
+                </div>
+              </div>
+            </div>
+            {% endif %}
+
+            {% if not p.hay_fecha %}
+            <div class="mb-2">
+              <div class="row g-2 align-items-center mb-2">
+                <div class="col-md-5">
+                  <label class="form-label small text-muted mb-0">¿Hay una columna con la <strong>fecha del periodo</strong>? (opcional)</label>
+                </div>
+                <div class="col-md-7">
+                  <select name="fecha_col" class="form-select">
+                    <option value="__ninguna__" {% if not request.form.get('fecha_col') %}selected{% endif %}>
+                      No hay columna de fecha; la indicaré manualmente…
+                    </option>
+                    {% for c in p.headers_f + p.headers_r %}
+                    <option value="{{ c }}" {% if request.form.get('fecha_col') == c %}selected{% endif %}>{{ c }}</option>
+                    {% endfor %}
+                  </select>
+                </div>
+              </div>
+            </div>
+            {% endif %}
+          </div>
+          {% endif %}
+
+          <div class="border-start border-4 border-dark ps-3 mb-3">
+            <h6 class="fw-bold text-dark mb-1">2. Información del informe</h6>
+          </div>
+          <div class="row g-3">
+            <div class="col-md-6">
+              <label class="form-label fw-bold"><i class="bi bi-building"></i> Municipio</label>
+              <input type="text" name="municipio" class="form-control" required
+                     placeholder="Ej: San Pedro" list="lista-municipios"
+                     value="{{ request.form.get('municipio', p.municipio or '') }}">
+              <datalist id="lista-municipios">
+                {% for m in municipios %}<option value="{{ m }}">{% endfor %}
+              </datalist>
+              {% if p.municipio %}
+              <div class="form-text text-success"><i class="bi bi-check-circle"></i> Detectado automáticamente — puede editarlo si es necesario</div>
+              {% else %}
+              <div class="form-text text-danger"><i class="bi bi-exclamation-triangle"></i> Campo requerido</div>
+              {% endif %}
+            </div>
+            <div class="col-md-6">
+              <label class="form-label fw-bold"><i class="bi bi-cpu"></i> Comercializadora</label>
+              <input type="text" name="comercializadora" class="form-control" required
+                     placeholder="Ej: Celsia" list="lista-comercializadoras"
+                     value="{{ request.form.get('comercializadora', p.comercializadora or '') }}">
+              <datalist id="lista-comercializadoras">
+                {% for c in comercializadoras %}<option value="{{ c }}">{% endfor %}
+              </datalist>
+              {% if p.comercializadora %}
+              <div class="form-text text-success"><i class="bi bi-check-circle"></i> Detectada automáticamente — puede editarla si es necesario</div>
+              {% else %}
+              <div class="form-text text-danger"><i class="bi bi-exclamation-triangle"></i> Campo requerido</div>
+              {% endif %}
+            </div>
+            <div class="col-md-6">
+              <label class="form-label fw-bold"><i class="bi bi-calendar-year"></i> Año</label>
+              <input type="number" name="anio" class="form-control" required min="2016" max="2100"
+                     placeholder="Ej: 2026" value="{{ request.form.get('anio', p.anio or '') }}">
+              {% if p.anio %}
+              <div class="form-text text-success"><i class="bi bi-check-circle"></i> Detectado automáticamente — puede editarlo si es necesario</div>
+              {% else %}
+              <div class="form-text text-danger"><i class="bi bi-exclamation-triangle"></i> Campo requerido</div>
+              {% endif %}
+            </div>
+            <div class="col-md-6">
+              <label class="form-label fw-bold"><i class="bi bi-calendar-month"></i> Mes</label>
+              <select name="mes" class="form-select" required>
+                <option value="" {% if not request.form.get('mes') and not p.mes %}selected{% endif %}>Seleccione…</option>
+                {% for n in range(1, 13) %}
+                <option value="{{ n }}" {% if (request.form.get('mes') and request.form.get('mes')|int == n) or (not request.form.get('mes') and p.mes == n) %}selected{% endif %}>{{ MESES[n] }}</option>
+                {% endfor %}
+              </select>
+              {% if p.mes %}
+              <div class="form-text text-success"><i class="bi bi-check-circle"></i> Detectado automáticamente — puede editarlo si es necesario</div>
+              {% else %}
+              <div class="form-text text-danger"><i class="bi bi-exclamation-triangle"></i> Campo requerido</div>
+              {% endif %}
+            </div>
+          </div>
+
+          <div class="mt-4">
+            <button type="submit" class="btn btn-primary btn-lg w-100" id="btn-procesar-meta">
+              <i class="bi bi-gear-wide-connected"></i> Procesar y Generar Informes
+            </button>
+          </div>
+          <div id="zona-progreso" class="d-none mt-3">
+            <div class="progress" style="height: 1rem;">
+              <div id="barra-progreso" class="progress-bar progress-bar-striped progress-bar-animated bg-warning"
+                   role="progressbar" style="width: 0%"></div>
+            </div>
+            <div id="txt-progreso" class="text-muted small mt-1">Preparando…</div>
+          </div>
+          <div class="text-center mt-3">
+            <a href="{{ url_for('main.index') }}" class="btn btn-outline-secondary">Cancelar</a>
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+(function () {
+  var form = document.getElementById('form-metadatos');
+  var btn = document.getElementById('btn-procesar-meta');
+  var zona = document.getElementById('zona-progreso');
+  var barra = document.getElementById('barra-progreso');
+  var txt = document.getElementById('txt-progreso');
+  var pasos = [
+    ['Depurando facturación…', 30],
+    ['Depurando recaudo…', 50],
+    ['Generando informe general…', 70],
+    ['Generando informe de clientes especiales…', 86]
+  ];
+  form.addEventListener('submit', function (e) {
+    e.preventDefault();
+    btn.disabled = true;
+    btn.classList.add('d-none');
+    zona.classList.remove('d-none');
+    var i = 0;
+    var timer = setInterval(function () {
+      if (i < pasos.length) {
+        txt.textContent = pasos[i][0];
+        barra.style.width = pasos[i][1] + '%';
+        i++;
+      }
+    }, 800);
+    fetch(form.action, {
+      method: 'POST',
+      body: new FormData(form),
+      headers: { 'X-Requested-With': 'XMLHttpRequest' }
+    })
+      .then(function (r) { return r.json(); })
+      .then(function (data) {
+        clearInterval(timer);
+        barra.style.width = '100%';
+        txt.textContent = 'Listo, redirigiendo…';
+        setTimeout(function () { window.location.href = data.redirect; }, 350);
+      })
+      .catch(function () {
+        clearInterval(timer);
+        btn.disabled = false;
+        btn.classList.remove('d-none');
+        zona.classList.add('d-none');
+        alert('Ocurrió un error al procesar los archivos. Intente de nuevo.');
+      });
+  });
+})();
+</script>
+{% endblock %}

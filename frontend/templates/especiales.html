@@ -1,0 +1,647 @@
+{% extends "base.html" %}
+{% block titulo %}Clientes Especiales — Informes F&amp;R{% endblock %}
+
+{% block contenido %}
+<div class="row justify-content-center">
+  <div class="col-lg-11">
+
+    <div class="d-flex justify-content-between align-items-center mb-4">
+      <h3 class="fw-bold text-dark">
+        <i class="bi bi-star-fill text-warning"></i> Clientes Especiales — Análisis por Grupo
+        {% if periodo %}<span class="badge bg-info text-dark ms-2">{{ municipio }} · {{ comercializadora }} · {{ periodo }}</span>{% endif %}
+      </h3>
+      <div class="d-flex gap-2">
+        {% if report_id %}
+        <a href="{{ url_for('main.descargar_excel', report_id=report_id) }}" class="btn btn-success">
+          <i class="bi bi-file-earmark-excel"></i> Excel Profesional
+        </a>
+        <a href="{{ url_for('main.descargar_word', report_id=report_id, tipo='especiales') }}" class="btn btn-primary">
+          <i class="bi bi-star-fill"></i> Word Especiales
+        </a>
+        {% else %}
+        <a href="{{ url_for('main.descargar_excel') }}" class="btn btn-success">
+          <i class="bi bi-file-earmark-excel"></i> Excel Profesional
+        </a>
+        <a href="{{ url_for('main.descargar_word', tipo='especiales') }}" class="btn btn-primary">
+          <i class="bi bi-star-fill"></i> Word Especiales
+        </a>
+        {% endif %}
+      </div>
+    </div>
+
+    <!-- KPIs -->
+    <div class="row g-3 mb-4">
+      <div class="col-md-3">
+        <div class="card border-0 shadow text-bg-primary">
+          <div class="card-body text-center">
+            <div class="fs-4 fw-bold">${{ "{:,.0f}".format(data.totales.fact).replace(",", ".") }}</div>
+            <small>Facturación Total</small>
+          </div>
+        </div>
+      </div>
+      <div class="col-md-3">
+        <div class="card border-0 shadow text-bg-success">
+          <div class="card-body text-center">
+            <div class="fs-4 fw-bold">${{ "{:,.0f}".format(data.totales.rec).replace(",", ".") }}</div>
+            <small>Recaudo Total</small>
+          </div>
+        </div>
+      </div>
+      <div class="col-md-3">
+        <div class="card border-0 shadow" style="background:#198754">
+          <div class="card-body text-center text-white">
+            <div class="fs-4 fw-bold">${{ "{:,.0f}".format(data.totales.saldo_pos).replace(",", ".") }}</div>
+            <small>Saldo +</small>
+          </div>
+        </div>
+      </div>
+      <div class="col-md-3">
+        <div class="card border-0 shadow" style="background:#dc3545">
+          <div class="card-body text-center text-white">
+            <div class="fs-4 fw-bold">${{ "{:,.0f}".format(data.totales.saldo_neg).replace(",", ".") }}</div>
+            <small>Saldo -</small>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Consolidado por Grupo -->
+    <div class="card border-0 shadow-sm mb-4">
+      <div class="card-header bg-dark text-white">
+        <h6 class="mb-0"><i class="bi bi-bar-chart-line"></i> Consolidado por Grupo — Acuerdo 031/2022</h6>
+      </div>
+      <div class="card-body p-0">
+        <table class="table table-hover mb-0">
+          <thead class="table-dark">
+            <tr><th>Grupo</th><th class="text-end">Cuentas</th><th class="text-end">Facturación</th><th class="text-end">Recaudo</th><th class="text-end">Consumo Energía</th><th class="text-end">Suma Saldos F-L</th><th class="text-end">Saldo Negativo</th><th class="text-end">Saldo Positivo</th></tr>
+          </thead>
+          <tbody>
+            {% for g in data.grupos %}
+            {% set d = data.por_clase[g] %}
+            <tr>
+              <td class="fw-bold">{{ g }}</td>
+              <td class="text-end">{{ d.n }}</td>
+              <td class="text-end">${{ "{:,.0f}".format(d.fact).replace(",", ".") }}</td>
+              <td class="text-end">${{ "{:,.0f}".format(d.rec).replace(",", ".") }}</td>
+              <td class="text-end">${{ "{:,.0f}".format(d.consumo).replace(",", ".") }}</td>
+              <td class="text-end {{ 'text-success' if d.saldo_fl >= 0 else 'text-danger' }}">${{ "{:,.0f}".format(d.saldo_fl).replace(",", ".") }}</td>
+              <td class="text-end text-danger">${{ "{:,.0f}".format(d.saldo_neg).replace(",", ".") }}</td>
+              <td class="text-end text-success">${{ "{:,.0f}".format(d.saldo_pos).replace(",", ".") }}</td>
+            </tr>
+            {% endfor %}
+            <tr class="table-warning fw-bold">
+              <td>TOTAL</td>
+              <td class="text-end">{{ data.totales.cuentas }}</td>
+              <td class="text-end">${{ "{:,.0f}".format(data.totales.fact).replace(",", ".") }}</td>
+              <td class="text-end">${{ "{:,.0f}".format(data.totales.rec).replace(",", ".") }}</td>
+              <td class="text-end">${{ "{:,.0f}".format(data.totales.consumo).replace(",", ".") }}</td>
+              <td class="text-end {{ 'text-success' if data.totales.total_saldo_fl >= 0 else 'text-danger' }}">${{ "{:,.0f}".format(data.totales.total_saldo_fl).replace(",", ".") }}</td>
+              <td class="text-end text-danger">${{ "{:,.0f}".format(data.totales.saldo_neg).replace(",", ".") }}</td>
+              <td class="text-end text-success">${{ "{:,.0f}".format(data.totales.saldo_pos).replace(",", ".") }}</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- Gráfico único -->
+    <div class="card border-0 shadow-sm mb-4">
+      <div class="card-header"><h6 class="mb-0">Facturación, Recaudo y Diferencia por Grupo</h6></div>
+      <div class="card-body">
+        <div style="position:relative;height:240px"><canvas id="chartUnico"></canvas></div>
+        <div class="text-center small text-muted mt-2" id="txtTotalesUnico"></div>
+      </div>
+    </div>
+
+    <!-- Detalle cuentas -->
+    <div class="card border-0 shadow-sm mb-4">
+      <div class="card-header bg-secondary text-white d-flex justify-content-between align-items-center">
+        <h6 class="mb-0"><i class="bi bi-table"></i> Detalle de Cuentas Especiales</h6>
+        <span class="small text-white-50">Filtre por columna o busque valores con el icono de líneas; haga clic en el icono de nota para leer o escribir una novedad en un comentario. <span id="filaCount"></span></span>
+      </div>
+      <div class="card-body p-0" style="max-height:600px;overflow:auto;min-height:220px">
+        <table class="table table-sm table-striped table-hover mb-0" style="font-size:0.82rem">
+          <thead class="table-dark align-middle">
+            <tr>
+              <th style="width:34px">#</th>
+              <th>ID Cuenta</th><th>Nombre</th><th>Grupo</th><th>Tarifa Mínima</th>
+              <th class="text-end">Consumo</th><th class="text-end">Facturación</th>
+              <th class="text-end">Recaudo</th>
+              <th class="text-end">Cálculo IAP</th><th class="text-end">Saldos F-L</th>
+              <th class="text-end">% CEE</th><th class="text-end">Val. Recaudada</th>
+              <th class="text-center">Val. %</th><th class="text-center">Val. Mínima</th>
+              <th class="text-center">Verif.</th><th>Periodicidad</th>
+              <th class="text-center">Nota</th>
+            </tr>
+            <tr class="filter-row">
+              {% for i in range(0, 17) %}
+              <th class="text-center">
+                {% if i == 16 %}
+                <span class="small text-white-50">—</span>
+                {% else %}
+                <button type="button" class="btn btn-sm btn-light flt-btn" data-col="{{ i }}" title="Filtrar columna">
+                  <i class="bi bi-funnel"></i>
+                </button>
+                {% endif %}
+              </th>
+              {% endfor %}
+            </tr>
+          </thead>
+          <tbody id="detailBody">
+            {% for e in data.filas %}
+            {% set nov = novedades.get(e.id|string, novedades.get(e.id, "")) %}
+            <tr>
+              <td class="fw-bold text-muted">{{ loop.index }}</td>
+              <td>{{ e.id }}</td>
+              <td>{{ e.nombre }}</td>
+              <td><span class="badge bg-dark">{{ e.clase }}</span></td>
+              <td class="text-end">{{ "$%s"|format(e.tarifa_minima) }}</td>
+              <td class="text-end">{{ "$%s"|format(e.consumo) }}</td>
+              <td class="text-end">{{ "$%s"|format(e.facturacion) }}</td>
+              <td class="text-end">{{ "$%s"|format(e.recaudo) }}</td>
+              <td class="text-end">{{ "$%s"|format(e.calc_iap|round(0)|int) }}</td>
+              <td class="text-end {{ 'text-success' if e.saldo_fl >= 0 else 'text-danger' }}">{{ "$%s"|format(e.saldo_fl|round(0)|int) }}</td>
+              <td class="text-end">{{ "%.2f%%"|format(e.pct_cee * 100) }}</td>
+              <td class="text-end {{ 'text-success' if e.val_rec >= 0 else 'text-danger' }}">{{ "$%s"|format(e.val_rec|round(0)|int) }}</td>
+              <td class="text-center">
+                {% if e.val_tarifa_pct == "Especial" %}
+                <span class="badge bg-success">Especial</span>
+                {% elif e.val_tarifa_pct == "Residencial" %}
+                <span class="badge bg-info">Residencial</span>
+                {% else %}
+                <span class="badge bg-secondary">Otra Tarifa</span>
+                {% endif %}
+              </td>
+              <td class="text-center">
+                {% if e.val_tarifa_min == "Tarifa Especial" %}
+                <span class="badge bg-success">Tarifa Especial</span>
+                {% else %}
+                <span class="badge bg-secondary">Otra Tarifa</span>
+                {% endif %}
+              </td>
+              <td class="text-center">
+                {% if e.verificado == "SI" %}
+                <span class="badge bg-success">Sí</span>
+                {% else %}
+                <span class="badge bg-danger">No</span>
+                {% endif %}
+              </td>
+              <td>{{ e.periodo }}</td>
+              <td class="text-center" style="width:56px">
+                <button type="button" class="btn btn-sm btn-outline-light nov-toggle" data-id="{{ e.id }}"
+                        data-nombre="{{ e.nombre }}" data-nov="{{ nov }}"
+                        title="{% if report_id %}Abrir comentario de novedad{% else %}Novedad / Observación (requiere reporte guardado){% endif %}"
+                        {% if not report_id %}disabled{% endif %}>
+                  {% if nov %}<i class="bi bi-sticky-fill text-warning"></i>
+                  {% else %}<i class="bi bi-sticky"></i>{% endif %}
+                </button>
+              </td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- ============ ANÁLISIS DEL PERIODO ============ -->
+    <div class="card border-0 shadow-sm mb-4">
+      <div class="card-header bg-dark text-white">
+        <h6 class="mb-0"><i class="bi bi-search"></i> Análisis del Periodo — Cuentas Especiales</h6>
+      </div>
+      <div class="card-body">
+
+        {% set anal = data.analisis if data.analisis is defined else {"iap_dejado_facturar":0,"iap_no_percibido_municipio":0,"cuentas_sin_facturar":0,"cuentas_otras_tarifas":0,"cuentas_bimestrales":0,"list_sin_facturar":[],"list_otras_tarifas":[],"list_bimestrales":[]} %}
+
+        <div class="row g-3 mb-4">
+          <div class="col-md-4">
+            <div class="card border-0 shadow-sm text-center p-3 h-100">
+              <div class="fs-4 fw-bold text-danger">${{ "%.1f"|format(anal.iap_dejado_facturar/1000000) }}M</div>
+              <small class="text-muted">IAP dejado de facturar por el agente de recaudo</small>
+            </div>
+          </div>
+          <div class="col-md-4">
+            <div class="card border-0 shadow-sm text-center p-3 h-100">
+              <div class="fs-4 fw-bold text-danger">${{ "%.1f"|format(anal.iap_no_percibido_municipio/1000000) }}M</div>
+              <small class="text-muted">IAP no percibido por el Municipio (cuentas especiales)</small>
+            </div>
+          </div>
+          <div class="col-md-4">
+            <div class="card border-0 shadow-sm text-center p-3 h-100">
+              {% if variacion is not none %}
+              <div class="fs-4 fw-bold {{ 'text-success' if variacion > 0 else 'text-danger' }}">
+                {{ "+%.1f"|format(variacion) if variacion > 0 else "%.1f"|format(variacion) }}%
+              </div>
+              <small class="text-muted">Variación saldo negativo vs periodo anterior</small>
+              {% else %}
+              <div class="fs-4 fw-bold text-secondary">n/d</div>
+              <small class="text-muted">Sin periodo anterior para comparar</small>
+              {% endif %}
+            </div>
+          </div>
+        </div>
+
+        <!-- Gráficas de anomalías -->
+        <div class="row g-3 mb-4">
+          <div class="col-md-6">
+            <div class="card border-0 shadow-sm h-100">
+              <div class="card-header bg-danger text-white"><h6 class="mb-0"><i class="bi bi-exclamation-triangle"></i> Cuentas sin facturación — por periodicidad</h6></div>
+              <div class="card-body">
+                <div style="position:relative;height:230px"><canvas id="chartSinFacturar"></canvas></div>
+                <div class="text-center small text-muted mt-2" id="txtTotalSinFacturar"></div>
+              </div>
+            </div>
+          </div>
+          <div class="col-md-6">
+            <div class="card border-0 shadow-sm h-100">
+              <div class="card-header bg-warning text-dark"><h6 class="mb-0"><i class="bi bi-tag"></i> Cuentas con tarifa diferente a la especial — por grupo</h6></div>
+              <div class="card-body">
+                <div style="position:relative;height:230px"><canvas id="chartOtrasTarifas"></canvas></div>
+                <div class="text-center small text-muted mt-2" id="txtTotalOtras"></div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Resumen ejecutivo (botón pequeño) -->
+        <div class="d-flex justify-content-between align-items-center">
+          <span class="small text-muted">
+            {% if analisis_ejecutivo %}
+            Resumen del periodo disponible.
+            {% else %}
+            No hay resumen ejecutivo. Genérelo o escríbalo con el botón.
+            {% endif %}
+          </span>
+          <button type="button" class="btn btn-sm btn-outline-warning" id="btnToggleResumen">
+            <i class="bi bi-pencil-square"></i> Resumen ejecutivo del análisis
+          </button>
+        </div>
+        <div id="editorResumen" class="d-none mt-3">
+          <label class="form-label fw-bold small">Editar resumen ejecutivo</label>
+          <textarea class="form-control" id="analisisTexto" rows="4" style="font-size:0.9rem">{{ analisis_ejecutivo or "" }}</textarea>
+          <div class="d-flex justify-content-end mt-2 gap-2">
+            <button type="button" class="btn btn-sm btn-outline-secondary" onclick="document.getElementById('editorResumen').classList.add('d-none')">
+              Cancelar
+            </button>
+            <button type="button" class="btn btn-sm btn-warning" id="btnGuardarAnalisis"
+                    {% if not report_id %}disabled title="Guarde primero el reporte para poder guardar el análisis"{% endif %}>
+              <i class="bi bi-save"></i> Guardar análisis
+            </button>
+          </div>
+        </div>
+
+      </div>
+    </div>
+
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="{{ url_for('static', filename='filter_widget.js') }}?v=20260916"></script>
+<script>
+function fmtN(n){ return Math.round(n).toLocaleString('es-CO'); }
+function fmtCorto(n){
+  const a = Math.abs(n);
+  if (a >= 1e6) return '$' + (n/1e6).toLocaleString('es-CO',{maximumFractionDigits:1}) + 'M';
+  if (a >= 1e3) return '$' + (n/1e3).toLocaleString('es-CO',{maximumFractionDigits:0}) + 'm';
+  return '$' + fmtN(n);
+}
+const fmtFull = n => '$' + fmtN(n);
+const rotuloBarras = {
+  id:'rotuloBarras',
+  afterDatasetsDraw(chart, args, opts){
+    const fmt = opts.fmt || fmtCorto;
+    const {ctx} = chart;
+    chart.data.datasets.forEach((ds,di)=>{
+      const meta = chart.getDatasetMeta(di);
+      meta.data.forEach((pt,i)=>{
+        const v = ds.data[i];
+        if (v == null || isNaN(Number(v))) return;
+        ctx.save();
+        ctx.translate(pt.x, pt.y + (pt.base - pt.y) / 2);
+        ctx.rotate(-Math.PI / 2);
+        ctx.font = 'bold 10px sans-serif';
+        ctx.fillStyle = '#1a1a18';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText(fmt(v), 0, 0);
+        ctx.restore();
+      });
+    });
+  }
+};
+const grupos = {{ data.grupos|tojson }};
+const pc = {{ data.por_clase|tojson }};
+const dfU = grupos.map(g => pc[g].rec - pc[g].fact);
+
+new Chart(document.getElementById('chartUnico'),{
+  type:'bar',
+  data:{
+    labels:grupos,
+    datasets:[
+      {label:'Facturación',data:grupos.map(g=>pc[g].fact),backgroundColor:'#D9CF43'},
+      {label:'Recaudo',data:grupos.map(g=>pc[g].rec),backgroundColor:'#1E7A1E'},
+      {label:'Diferencia (Rec - Fact)',data:dfU,
+       backgroundColor:dfU.map(v => v>=0 ? '#BFBA6B' : '#A93226')}
+    ]
+  },
+  options:{responsive:true,maintainAspectRatio:false,plugins:{
+    legend:{position:'top'},
+    tooltip:{callbacks:{label:(c)=>' '+c.dataset.label+': '+fmtFull(c.parsed.y)}},
+    rotuloBarras:{fmt:fmtCorto}
+  }},
+  plugins:[rotuloBarras]
+});
+const tsF = grupos.reduce((a,g)=>a + (pc[g].fact||0),0);
+const tsR = grupos.reduce((a,g)=>a + (pc[g].rec||0),0);
+const tsD = tsR - tsF;
+document.getElementById('txtTotalesUnico').textContent =
+  'Totales · Facturación '+fmtCorto(tsF)+' · Recaudo '+fmtCorto(tsR)+' · Diferencia '+fmtCorto(tsD);
+
+// ---- Filtros por columna (estilo Excel) ----
+initColumnFilters({
+  bodySel: '#detailBody',
+  cols: 17,
+  labels: ['#','ID Cuenta','Nombre','Grupo','Tarifa Mínima','Consumo','Facturación','Recaudo','Cálculo IAP','Saldos F-L','% CEE','Val. Recaudada','Val. %','Val. Mínima','Verif.','Periodicidad','Nota'],
+  countEl: 'filaCount'
+});
+
+// ---- Nota / Novedad: mini comentario emergente ----
+let notaPanel = null;
+
+function crearNotaPanel(){
+  notaPanel = document.createElement('div');
+  notaPanel.id = 'notaPanel';
+  notaPanel.className = 'd-none shadow';
+  notaPanel.style.cssText = 'position:fixed;z-index:3000;width:300px;max-width:90vw;background:#FFFFFF;border:1px solid #BFBFBF;border-radius:10px;font-size:0.9rem;';
+  notaPanel.innerHTML =
+    '<div class="nota-arrow" style="position:absolute;width:0;height:0;border-left:9px solid transparent;border-right:9px solid transparent;border-bottom:9px solid #ffda6a;"></div>' +
+    '<div style="background:#C4B430;color:#0D0D0D;border-radius:10px 10px 0 0;padding:8px 12px;display:flex;justify-content:space-between;align-items:center;">' +
+      '<b class="small"><i class="bi bi-sticky-fill"></i> Novedad / Observaci\u00f3n</b>' +
+      '<button type="button" class="btn-close p-1" data-nota="cerrar" style="font-size:0.7rem;" aria-label="Cerrar"></button>' +
+    '</div>' +
+    '<div class="p-2">' +
+      '<small class="text-muted d-block mb-1" id="notaCuenta"></small>' +
+      '<textarea class="form-control form-control-sm" id="notaTexto" rows="6" style="font-size:0.85rem" placeholder="Escriba la novedad..."></textarea>' +
+      '<div class="d-flex gap-2 mt-2">' +
+        '<button type="button" class="btn btn-sm btn-outline-secondary flex-fill" data-nota="cancelar">Cancelar</button>' +
+        '<button type="button" class="btn btn-sm btn-warning flex-fill" data-nota="guardar"><i class="bi bi-check-lg"></i> Guardar</button>' +
+      '</div>' +
+    '</div>';
+  document.body.appendChild(notaPanel);
+  notaPanel.addEventListener('click', onNotaClick);
+}
+
+function posicionarNota(btn){
+  const r = btn.getBoundingClientRect();
+  const w = notaPanel.offsetWidth || 300;
+  const hEst = 250;
+  let left = r.left;
+  if (left + w > window.innerWidth - 8) left = Math.max(8, window.innerWidth - w - 8);
+  let arriba = false;
+  let top = r.bottom + 6;
+  if (top + hEst > window.innerHeight && r.top > hEst + 10){
+    top = r.top - hEst - 6;
+    arriba = true;
+  }
+  notaPanel.style.left = left + 'px';
+  notaPanel.style.top = top + 'px';
+  const flecha = notaPanel.querySelector('.nota-arrow');
+  const cx = Math.max(10, Math.min(r.left + r.width/2 - left - 9, w - 20));
+  if (arriba){
+    flecha.style.top = 'auto'; flecha.style.bottom = '-9px';
+    flecha.style.borderTop = '9px solid #ffda6a'; flecha.style.borderBottom = 'none';
+  } else {
+    flecha.style.top = '-9px'; flecha.style.bottom = 'auto';
+    flecha.style.borderBottom = '9px solid #ffda6a'; flecha.style.borderTop = 'none';
+  }
+  flecha.style.left = cx + 'px';
+}
+
+function abrirNota(btn){
+  if (!notaPanel) crearNotaPanel();
+  notaPanel._btn = btn;
+  notaPanel._id = btn.dataset.id;
+  document.getElementById('notaCuenta').textContent = 'Cuenta #' + btn.dataset.id + ' \u2014 ' + (btn.dataset.nombre || '');
+  document.getElementById('notaTexto').value = btn.dataset.nov || '';
+  posicionarNota(btn);
+  notaPanel.classList.remove('d-none');
+  setTimeout(()=>{ document.getElementById('notaTexto').focus(); }, 30);
+}
+
+function cerrarNota(){
+  if (notaPanel) notaPanel.classList.add('d-none');
+}
+
+async function onNotaClick(e){
+  const act = e.target && e.target.closest ? e.target.closest('[data-nota]') : null;
+  if (!act) return;
+  const tipo = act.dataset.nota;
+  if (tipo === 'cerrar' || tipo === 'cancelar'){ cerrarNota(); return; }
+  if (tipo === 'guardar'){
+    const btn = notaPanel._btn;
+    const id = notaPanel._id;
+    const val = document.getElementById('notaTexto').value.trim();
+    await postData({novedades: {[id]: val}});
+    btn.dataset.nov = val;
+    btn.innerHTML = val
+      ? '<i class="bi bi-sticky-fill text-warning"></i>'
+      : '<i class="bi bi-sticky"></i>';
+    cerrarNota();
+    showFlash('Novedad guardada.', 'success');
+  }
+}
+
+document.querySelectorAll('.nov-toggle').forEach(btn=>{
+  btn.addEventListener('click', function(e){
+    e.stopPropagation();
+    if (notaPanel && !notaPanel.classList.contains('d-none') && notaPanel._btn === this){
+      cerrarNota(); return;
+    }
+    abrirNota(this);
+  });
+});
+
+document.addEventListener('click', e=>{
+  if (notaPanel && !notaPanel.classList.contains('d-none')){
+    if (e.target && e.target.closest && (e.target.closest('#notaPanel') || e.target.closest('.nov-toggle'))) return;
+    cerrarNota();
+  }
+});
+
+document.addEventListener('keydown', e=>{
+  if (e.key === 'Escape' && notaPanel && !notaPanel.classList.contains('d-none')) cerrarNota();
+});
+
+// ---- Resumen ejecutivo (botón) ----
+document.getElementById('btnToggleResumen').addEventListener('click', function(){
+  document.getElementById('editorResumen').classList.toggle('d-none');
+});
+
+document.getElementById('btnGuardarAnalisis').addEventListener('click', async function(){
+  if (!report_id) return;
+  const txt = document.getElementById('analisisTexto').value;
+  await postData({analisis_ejecutivo: txt});
+  document.getElementById('editorResumen').classList.add('d-none');
+  showFlash('Análisis guardado correctamente.', 'success');
+});
+
+const report_id = {{ report_id or 0 }};
+
+async function postData(payload) {
+  const resp = await fetch('/reporte/' + report_id + '/analisis', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify(payload)
+  });
+  return resp.json();
+}
+
+function showFlash(msg, type){
+  let box = document.getElementById('flashNovedades');
+  if (!box){
+    box = document.createElement('div');
+    box.id = 'flashNovedades';
+    box.style.cssText = 'position:fixed;top:20px;right:20px;z-index:2000;padding:12px 18px;border-radius:8px;font-weight:bold;';
+    document.body.appendChild(box);
+  }
+  box.style.background = type === 'success' ? '#198754' : '#dc3545';
+  box.style.color = '#0D0D0D';
+  box.textContent = msg;
+  setTimeout(()=> box.remove(), 2500);
+}
+
+// ---- Gráficas de anomalías (doughnut) con total ----
+const anal = {{ (data.analisis if data.analisis is defined else {}) | tojson }};
+const PALETA = [
+  '#D9CF43', '#1E7A1E', '#BFBA6B', '#A93226', '#E2DF2B', '#BFBFBF', '#8a7d15'
+];
+
+const totalCentro = {
+  id:'totalCentro',
+  afterDraw(chart){
+    const meta = chart.getDatasetMeta(0);
+    if (!meta || !meta.data || meta.data.length === 0) return;
+    const pt = meta.data[0];
+    const total = chart.data.datasets[0].data.reduce((a,b)=>a + Number(b||0),0);
+    const {ctx} = chart;
+    ctx.save();
+    ctx.textAlign='center'; ctx.textBaseline='middle';
+    ctx.fillStyle='#1a1a18'; ctx.font='bold 20px sans-serif';
+    ctx.fillText(fmtN(total), pt.x, pt.y - 6);
+    ctx.fillStyle='#1a1a18'; ctx.font='11px sans-serif';
+    ctx.fillText('cuentas', pt.x, pt.y + 13);
+    ctx.restore();
+  }
+};
+
+// Escribe el valor dentro de cada porción de los gráficos circulares
+const rotuloPie = {
+  id:'rotuloPie',
+  afterDatasetsDraw(chart, args, opts){
+    const fmt = (opts && opts.fmt) || fmtN;
+    const {ctx} = chart;
+    chart.data.datasets.forEach((ds, di) => {
+      const meta = chart.getDatasetMeta(di);
+      (meta.data || []).forEach((pt, i) => {
+        const v = ds.data[i];
+        if (v == null || Number(v) <= 0) return;
+        if (pt.hidden) return;
+        if ((pt.endAngle - pt.startAngle) < 0.12) return;
+        const ang = (pt.startAngle + pt.endAngle) / 2;
+        const r = (pt.outerRadius + pt.innerRadius) / 2;
+        ctx.save();
+        ctx.font = 'bold 10px sans-serif';
+        ctx.fillStyle = '#1a1a18';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText(fmt(v), pt.x + Math.cos(ang) * r, pt.y + Math.sin(ang) * r);
+        ctx.restore();
+      });
+    });
+  }
+};
+
+// Clic en la leyenda tacha y oculta/muestra esa porción de la rueda
+function alternarPorcion(e, item, legend) {
+  const chart = legend.chart;
+  chart.toggleDataVisibility(item.index);
+  chart.update();
+}
+
+// Tacha en la leyenda las porciones ocultas de las ruedas
+const tachaLeyenda = {
+  id:'tachaLeyenda',
+  afterDraw(chart){
+    const legend = chart.legend;
+    if (!legend || !legend.legendItems || !legend.legendHitBoxes) return;
+    const {ctx} = chart;
+    ctx.save();
+    ctx.strokeStyle = '#1a1a18';
+    ctx.lineWidth = 1.5;
+    legend.legendItems.forEach((item, i) => {
+      let oculta = item.hidden === true;
+      if (!oculta && typeof chart.getDataVisibility === 'function' && item.index != null) {
+        oculta = chart.getDataVisibility(item.index) === false;
+      }
+      if (!oculta) return;
+      const box = legend.legendHitBoxes[i];
+      if (!box) return;
+      const y = box.top + box.height / 2;
+      ctx.beginPath();
+      ctx.moveTo(box.left + box.height, y);
+      ctx.lineTo(box.left + box.width, y);
+      ctx.stroke();
+    });
+    ctx.restore();
+  }
+};
+
+function doughnut(id, lista, campo){
+  const m = {};
+  (lista||[]).forEach(x=>{ const k = x[campo] || 'Sin dato'; m[k]=(m[k]||0)+1; });
+  const labels = Object.keys(m), values = Object.values(m);
+  const colors = labels.map((_,i)=> PALETA[i % PALETA.length]);
+  new Chart(document.getElementById(id),{
+    type:'doughnut',
+    data:{ labels, datasets:[{ data: values, backgroundColor: colors, borderWidth: 1 }] },
+    options:{
+      responsive:true, maintainAspectRatio:false,
+      plugins:{
+        legend:{
+          position:'right', onClick:alternarPorcion, labels:{ color:'#0D0D0D', font:{ size:10 }, generateLabels(chart){
+            const ds = chart.data.datasets[0];
+            return chart.data.labels.map((l,i)=>({
+              text: l + ' (' + fmtN(ds.data[i]) + ')',
+              fillStyle: ds.backgroundColor[i],
+              strokeStyle: ds.backgroundColor[i],
+              fontColor:'#0D0D0D',
+              hidden:false, index:i
+            }));
+          } }
+        },
+        tooltip:{ callbacks:{ label: c => ' ' + c.label + ': ' + fmtN(c.parsed) + ' cuenta(s)' } },
+        rotuloPie:{ fmt: fmtN }
+      },
+      cutout:'58%'
+    },
+    plugins:[totalCentro, rotuloPie, tachaLeyenda]
+  });
+}
+
+// Sin facturación: solo cuentas que SÍ debían facturarse este mes (excluye NO CORRESPONDE)
+const sinF = (anal.list_sin_facturar || []).filter(x => !String(x.estado_fact||'').startsWith('NO CORRESPONDE'));
+if (document.getElementById('chartSinFacturar')){
+  doughnut('chartSinFacturar', sinF, 'periodo');
+  const totalIAP = sinF.reduce((a,x)=>a+(x.calc_iap||0),0);
+  document.getElementById('txtTotalSinFacturar').textContent =
+    'Total: ' + fmtN(sinF.length) + ' cuentas · ' + fmtCorto(totalIAP) + ' de IAP que debía facturarse';
+}
+if (document.getElementById('chartOtrasTarifas')){
+  const otf = anal.list_otras_tarifas || [];
+  doughnut('chartOtrasTarifas', otf, 'clase');
+  document.getElementById('txtTotalOtras').textContent =
+    'Total: ' + fmtN(otf.length) + ' cuentas con tarifa diferente a la especial';
+}
+</script>
+{% endblock %}
