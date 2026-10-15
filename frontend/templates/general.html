@@ -151,8 +151,8 @@
     <div class="row g-4 mb-4">
       <div class="col-lg-6">
         <div class="card border-0 shadow-sm h-100">
-          <div class="card-header"><h6 class="mb-0">Cuentas / usuarios por clasificación</h6></div>
-          <div class="card-body"><canvas id="chartFyrPieClas" height="120"></canvas></div>
+          <div class="card-header"><h6 class="mb-0">Cuentas / usuarios por clasificación y estrato</h6></div>
+          <div class="card-body"><canvas id="chartFyrClas" height="120"></canvas></div>
         </div>
       </div>
       <div class="col-lg-6">
@@ -165,22 +165,14 @@
     <div class="row g-4 mb-4">
       <div class="col-lg-6">
         <div class="card border-0 shadow-sm h-100">
-          <div class="card-header"><h6 class="mb-0">Cuentas residenciales por estrato</h6></div>
-          <div class="card-body"><canvas id="chartFyrEstrato" height="120"></canvas></div>
-        </div>
-      </div>
-      <div class="col-lg-6">
-        <div class="card border-0 shadow-sm h-100">
           <div class="card-header"><h6 class="mb-0">% Recaudo por clasificación</h6></div>
           <div class="card-body"><canvas id="chartFyrPct" height="120"></canvas></div>
         </div>
       </div>
-    </div>
-    <div class="row g-4 mb-4">
-      <div class="col-lg-12">
+      <div class="col-lg-6">
         <div class="card border-0 shadow-sm h-100">
           <div class="card-header"><h6 class="mb-0">Facturación vs Recaudo por clasificación ($)</h6></div>
-          <div class="card-body"><canvas id="chartFyrFactRec" height="140"></canvas></div>
+          <div class="card-body"><canvas id="chartFyrFactRec" height="120"></canvas></div>
         </div>
       </div>
     </div>
@@ -564,8 +556,7 @@ function alternarPorcion(e, item, legend) {
 {% if es_emsa %}
 const FYR = {{ fyr|tojson }};
 const CLAS5 = ['Subtotal Residencial', 'Comercial', 'Oficial', 'Industrial', 'Otros'];
-const PAL5 = ['#D9CF43', '#1E7A1E', '#BFBA6B', '#A93226', '#E2DF2B'];
-const fN = k => FYR[k].n[2], fF = k => FYR[k].fact[2], fR = k => FYR[k].rec[2];
+const fF = k => FYR[k].fact[2], fR = k => FYR[k].rec[2];
 const LEG = { position: 'right', onClick: alternarPorcion, labels: { color: '#0D0D0D', font: { size: 10 },
   generateLabels(chart) {
     const ds = chart.data.datasets[0];
@@ -577,13 +568,23 @@ const LEG = { position: 'right', onClick: alternarPorcion, labels: { color: '#0D
     }));
   } } };
 
-new Chart(document.getElementById('chartFyrPieClas'), {
-  type: 'pie',
-  data: { labels: CLAS5, datasets: [{ data: CLAS5.map(fN), backgroundColor: PAL5 }] },
-  options: { responsive: true,
-    plugins: { legend: LEG, rotuloPie: { fmt: fmtN },
-      tooltip: { callbacks: { label: (c) => ' ' + c.label + ': ' + fmtN(c.parsed) + ' cuentas' } } } },
-  plugins: [rotuloPie, tachaLeyenda]
+// Cuentas por clasificación y estrato en una sola gráfica de barras
+const LBL10 = [1, 2, 3, 4, 5, 6].map(i => 'Estrato ' + i)
+  .concat(['Comercial', 'Oficial', 'Industrial', 'Otros']);
+const COL10 = ['#F2ECC8', '#EDE3A8', '#E7D982', '#E0CE5C', '#D9C236', '#CBB92F']
+  .concat(['#1E7A1E', '#BFBA6B', '#A93226', '#E2DF2B']);
+new Chart(document.getElementById('chartFyrClas'), {
+  type: 'bar',
+  data: { labels: LBL10, datasets: [{
+    label: 'Cuentas',
+    data: [1, 2, 3, 4, 5, 6].map(i => FYR['Residencial – Estrato ' + i].n[2])
+      .concat(['Comercial', 'Oficial', 'Industrial', 'Otros'].map(k => FYR[k].n[2])),
+    backgroundColor: COL10 }] },
+  options: { responsive: true, scales: { y: { beginAtZero: true } },
+    plugins: { legend: { display: false },
+      tooltip: { callbacks: { label: (c) => ' ' + fmtN(c.parsed.y) + ' cuentas' } },
+      rotuloBarras: { fmt: fmtN } } },
+  plugins: [rotuloBarras]
 });
 const _zt = FYR['TOTAL'];
 new Chart(document.getElementById('chartFyrZona'), {
@@ -593,15 +594,6 @@ new Chart(document.getElementById('chartFyrZona'), {
     plugins: { legend: LEG, rotuloPie: { fmt: fmtN },
       tooltip: { callbacks: { label: (c) => ' ' + c.label + ': ' + fmtN(c.parsed) + ' cuentas' } } } },
   plugins: [rotuloPie, tachaLeyenda]
-});
-new Chart(document.getElementById('chartFyrEstrato'), {
-  type: 'bar',
-  data: { labels: ['Estrato 1', 'Estrato 2', 'Estrato 3', 'Estrato 4', 'Estrato 5', 'Estrato 6'],
-    datasets: [{ label: 'Cuentas', data: [1, 2, 3, 4, 5, 6].map(i => FYR['Residencial – Estrato ' + i].n[2]),
-      backgroundColor: '#D9CF43' }] },
-  options: { responsive: true, scales: { y: { beginAtZero: true } },
-    plugins: { legend: { display: false }, rotuloBarras: { fmt: fmtN } } },
-  plugins: [rotuloBarras]
 });
 new Chart(document.getElementById('chartFyrFactRec'), {
   type: 'bar',
