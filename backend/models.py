@@ -1,7 +1,11 @@
 
 
+import base64
+import gzip
+import json
 from datetime import datetime, timedelta
 from flask_sqlalchemy import SQLAlchemy
+from sqlalchemy.types import Text, TypeDecorator
 
 # Objeto que conecta la app con la base de datos (crea las tablas, consultas, etc.)
 db = SQLAlchemy()
@@ -98,6 +102,34 @@ class CargaPendiente(db.Model):
         return f"<CargaPendiente {self.token}>"
 
 
+# JSON comprimido con gzip+base64 para no llenar la BD (un informe de
+# Villavicencio son ~375 MB de texto plano y quedan en ~25 MB).
+# El código lo usa igual: recibe y guarda dicts/listas como si fuera JSON normal.
+class JsonComprimido(TypeDecorator):
+    impl = Text
+    cache_ok = True
+
+    def process_bind_param(self, value, dialect):
+        if value is None:
+            return None
+        texto = value if isinstance(value, str) else json.dumps(
+            value, ensure_ascii=False, default=str)
+        return base64.b64encode(
+            gzip.compress(texto.encode("utf-8"), 6)).decode("ascii")
+
+    def process_result_value(self, value, dialect):
+        if value is None:
+            return None
+        try:
+            texto = gzip.decompress(base64.b64decode(value)).decode("utf-8")
+        except Exception:
+            texto = value  # datos antiguos guardados sin comprimir
+        try:
+            return json.loads(texto)
+        except Exception:
+            return None
+
+
 # Un informe ya procesado y guardado (un municipio + comercializadora + mes/año)
 class Report(db.Model):
     __tablename__ = "reports"
@@ -110,7 +142,7 @@ class Report(db.Model):
     mes = db.Column(db.Integer, nullable=False)
 
     # Los datos del informe general y de especiales se guardan como json
-    general_data = db.Column(db.JSON, nullable=True)
+    general_data = db.Column(JsonComprimido, nullable=True)
     especiales_data = db.Column(db.JSON, nullable=True)
 
     analisis_ejecutivo = db.Column(db.Text, nullable=True)
