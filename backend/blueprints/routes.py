@@ -215,7 +215,13 @@ def _finalizar_carga(municipio, comercializadora, anio, mes, fact_path, rec_path
 @bp.route("/")
 def index():
     municipios = get_municipios()
-    return render_template("index.html", cargado=CARGADO, municipios=municipios)
+    # Municipio del último informe procesado (para adaptar los botones:
+    # Villavicencio/EMSA no tiene clientes especiales)
+    ultimo = Report.query.order_by(Report.updated_at.desc()).first()
+    muni_ultimo = (ultimo.comercializadora.municipio.nombre
+                   if ultimo and ultimo.comercializadora else "")
+    return render_template("index.html", cargado=CARGADO, municipios=municipios,
+                           muni_ultimo=muni_ultimo)
 
 
 # Las siguientes rutas /api/ entregan datos en formato json para que
