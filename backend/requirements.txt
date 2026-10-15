@@ -9,3 +9,6 @@ python-docx>=1.1.0
 matplotlib>=3.9.0
 psycopg[binary]>=3.1.0
 gunicorn>=21.2.0
+
+# Desarrollo / testing
+pytest>=8.0.0
