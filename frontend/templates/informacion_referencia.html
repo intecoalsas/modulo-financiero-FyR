@@ -747,6 +747,8 @@ if (document.getElementById('chartAnGral')){
     options:{responsive:true, maintainAspectRatio:false, plugins:{
       legend:{position:'top', onClick:alternarPorcion},
       tooltip:{callbacks:{label:(c)=>' '+c.dataset.label+': '+fmtFull(c.parsed.y)}}
+    }, scales:{
+      y:{ticks:{stepSize:400000, callback:(v)=>fmtCorto(v)}}
     }},
     plugins:[tachaLeyenda]
   });
