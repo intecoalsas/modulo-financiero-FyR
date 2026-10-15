@@ -163,16 +163,10 @@
       </div>
     </div>
     <div class="row g-4 mb-4">
-      <div class="col-lg-6">
-        <div class="card border-0 shadow-sm h-100">
-          <div class="card-header"><h6 class="mb-0">% Recaudo por clasificación</h6></div>
-          <div class="card-body"><canvas id="chartFyrPct" height="120"></canvas></div>
-        </div>
-      </div>
-      <div class="col-lg-6">
+      <div class="col-lg-12">
         <div class="card border-0 shadow-sm h-100">
           <div class="card-header"><h6 class="mb-0">Facturación vs Recaudo por clasificación ($)</h6></div>
-          <div class="card-body"><canvas id="chartFyrFactRec" height="120"></canvas></div>
+          <div class="card-body"><canvas id="chartFyrFactRec" height="140"></canvas></div>
         </div>
       </div>
     </div>
@@ -605,15 +599,6 @@ new Chart(document.getElementById('chartFyrFactRec'), {
     plugins: { legend: { position: 'top' },
       tooltip: { callbacks: { label: (c) => ' ' + c.dataset.label + ': ' + fmtCorto(c.parsed.y) } },
       rotuloBarras: { fmt: fmtCorto } } },
-  plugins: [rotuloBarras]
-});
-new Chart(document.getElementById('chartFyrPct'), {
-  type: 'bar',
-  data: { labels: CLAS5,
-    datasets: [{ label: '% Recaudo', data: CLAS5.map(k => fF(k) ? 100 * fR(k) / fF(k) : 0),
-      backgroundColor: '#BFBA6B' }] },
-  options: { responsive: true, scales: { y: { beginAtZero: true } },
-    plugins: { legend: { display: false }, rotuloBarras: { fmt: (v) => v.toFixed(1) + '%' } } },
   plugins: [rotuloBarras]
 });
 {% else %}
