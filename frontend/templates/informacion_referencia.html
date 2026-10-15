@@ -718,19 +718,34 @@ const valoresPuntos = {
   id:'valoresPuntos',
   afterDatasetsDraw(chart){
     const {ctx} = chart;
-    chart.data.datasets.forEach((ds,di)=>{
+    ctx.font = '8px sans-serif';
+    const dibujados = [];
+    // ¿Este rectángulo toca alguno ya dibujado?
+    const chocan = (x, y, w, h) => dibujados.some(r =>
+      x < r.x + r.w && x + w > r.x && y < r.y + r.h && y + h > r.y);
+    chart.data.datasets.forEach((ds, di) => {
       const meta = chart.getDatasetMeta(di);
       if (meta.hidden) return;
-      meta.data.forEach((pt,i)=>{
+      meta.data.forEach((pt, i) => {
         const v = ds.data[i];
         if (v == null || isNaN(Number(v))) return;
-        ctx.save();
-        ctx.font = '8px sans-serif';
-        ctx.fillStyle = '#1a1a18';
-        ctx.textAlign = 'center';
-        ctx.textBaseline = 'bottom';
-        ctx.fillText(fmtCorto(v), pt.x, pt.y - 6);
-        ctx.restore();
+        const txt = fmtCorto(v);
+        const w = ctx.measureText(txt).width, h = 9;
+        // Primero encima del punto; si choca, debajo; si aún choca, se omite
+        const opciones = [
+          [pt.x - w / 2, pt.y - 6 - h],
+          [pt.x - w / 2, pt.y + 6]
+        ];
+        for (const [x, y] of opciones) {
+          if (!chocan(x - 1, y - 1, w + 2, h + 2)) {
+            dibujados.push({x, y, w, h});
+            ctx.fillStyle = '#1a1a18';
+            ctx.textAlign = 'left';
+            ctx.textBaseline = 'top';
+            ctx.fillText(txt, x, y);
+            return;
+          }
+        }
       });
     });
   }
