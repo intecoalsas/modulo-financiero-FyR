@@ -86,7 +86,56 @@ def _contexto_global():
 
 app.context_processor(_contexto_global)
 
+# Copia de seguridad automática de la BD SQLite al arrancar:
+# a lo sumo una por día, solo si hay informes guardados, y conserva los últimos 15.
+def _respaldo_inicio():
+    if os.environ.get("INFORMES_TEST"):
+        return
+    if not _db_url.startswith("sqlite:///"):
+        return
+    db_path = _db_url[len("sqlite:///"):]
+    if not os.path.isfile(db_path):
+        return
+    import glob as _glob
+    import shutil as _shutil
+    import sqlite3 as _sqlite3
+    from datetime import datetime as _dt
+
+    def _n_informes(p):
+        try:
+            c = _sqlite3.connect(p)
+            n = c.execute("SELECT count(*) FROM reports").fetchone()[0]
+            c.close()
+            return n
+        except Exception:
+            return 0
+
+    resp_dir = os.path.join(BASE_DIR, "respaldos")
+    os.makedirs(resp_dir, exist_ok=True)
+    existentes = sorted(_glob.glob(os.path.join(resp_dir, "informes_*.db")))
+    n = _n_informes(db_path)
+    if n == 0:
+        # Nunca respaldar una BD vacía (no pisar los buenos respaldos)
+        if any(_n_informes(p) > 0 for p in existentes):
+            print("¡ALERTA! La base de datos no tiene informes guardados."
+                  " Restaura con: python scripts/restaurar.py")
+        return
+    hoy = _dt.now().strftime("%Y%m%d")
+    if any(os.path.basename(p).startswith("informes_" + hoy) for p in existentes):
+        return
+    destino = os.path.join(resp_dir,
+                           "informes_" + _dt.now().strftime("%Y%m%d_%H%M%S") + ".db")
+    _shutil.copy2(db_path, destino)
+    print("Respaldo automático creado:", destino)
+    for viejo in sorted(_glob.glob(os.path.join(resp_dir, "informes_*.db")))[:-15]:
+        try:
+            os.remove(viejo)
+        except OSError:
+            pass
+
+
 with app.app_context():
+    _respaldo_inicio()
     db.create_all()
 
     from sqlalchemy import inspect as sa_inspect, text as sa_text
