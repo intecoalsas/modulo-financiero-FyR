@@ -725,27 +725,14 @@ def _contexto_fyr(municipio, comercializadora, general_data):
     return True, fyr, list(FYR_ORDEN)
 
 
-# Página del informe general (usa lo que está en memoria, o sea lo último cargado)
+# Página del informe general (usa el último reporte guardado en BD)
 @bp.route("/general")
 def general():
-    if not CARGADO or DATA["general"] is None:
+    ultimo = Report.query.order_by(Report.updated_at.desc()).first()
+    if not ultimo or ultimo.general_data is None:
         flash("Primero debe cargar los archivos.", "warning")
         return redirect(url_for("main.index"))
-    mes_d = DATA.get("mes")
-    anio_d = DATA.get("anio")
-    periodo_d = None
-    if mes_d and anio_d:
-        try:
-            periodo_d = f"{MESES[int(mes_d)]} {int(anio_d)}"
-        except (TypeError, ValueError, KeyError):
-            periodo_d = None
-    es_emsa, fyr, fyr_orden = _contexto_fyr(
-        DATA.get("municipio"), DATA.get("comercializadora"), DATA["general"])
-    return render_template("general.html", data=DATA["general"], report_id=None,
-                           municipio=DATA.get("municipio"),
-                           comercializadora=DATA.get("comercializadora"),
-                           periodo=periodo_d, es_emsa=es_emsa,
-                           fyr=fyr, fyr_orden=fyr_orden)
+    return redirect(url_for("main.general_id", report_id=ultimo.id))
 
 
 # Página del informe general de un reporte guardado (desde el historial)
@@ -766,36 +753,14 @@ def general_id(report_id):
                            es_emsa=es_emsa, fyr=fyr, fyr_orden=fyr_orden)
 
 
-# Página del informe de especiales (usando lo último cargado)
+# Página del informe de especiales (usando el último reporte guardado)
 @bp.route("/especiales")
 def especiales():
-    if not CARGADO or DATA["general"] is None:
+    ultimo = Report.query.order_by(Report.updated_at.desc()).first()
+    if not ultimo or ultimo.general_data is None:
         flash("Primero debe cargar los archivos.", "warning")
         return redirect(url_for("main.index"))
-    if DATA["especiales"] is None:
-        DATA["especiales"] = build_especiales(mes=DATA.get("mes", 7))
-    data_esp = DATA["especiales"]
-    analisis = None
-    mes_d = DATA.get("mes")
-    anio_d = DATA.get("anio")
-    periodo_d = None
-    if mes_d and anio_d:
-        try:
-            periodo_d = f"{MESES[int(mes_d)]} {int(anio_d)}"
-        except (TypeError, ValueError, KeyError):
-            periodo_d = None
-    if data_esp is not None:
-        analisis = texto_ejecutivo(
-            municipio=DATA.get("municipio"),
-            comercializadora=DATA.get("comercializadora"),
-            anio=DATA.get("anio", 2026),
-            mes=DATA.get("mes", 7),
-            data=data_esp, variacion=None)
-    return render_template("especiales.html", data=data_esp, report_id=None,
-                           municipio=DATA.get("municipio"),
-                           comercializadora=DATA.get("comercializadora"),
-                           periodo=periodo_d,
-                           analisis_ejecutivo=analisis, novedades={}, variacion=None)
+    return redirect(url_for("main.especiales_id", report_id=ultimo.id))
 
 
 # Página del informe de especiales de un reporte guardado
