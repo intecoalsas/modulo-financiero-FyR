@@ -574,17 +574,15 @@ const LBL10 = [1, 2, 3, 4, 5, 6].map(i => 'Estrato ' + i)
 const COL10 = ['#F2ECC8', '#EDE3A8', '#E7D982', '#E0CE5C', '#D9C236', '#CBB92F']
   .concat(['#1E7A1E', '#BFBA6B', '#A93226', '#E2DF2B']);
 new Chart(document.getElementById('chartFyrClas'), {
-  type: 'bar',
+  type: 'pie',
   data: { labels: LBL10, datasets: [{
-    label: 'Cuentas',
     data: [1, 2, 3, 4, 5, 6].map(i => FYR['Residencial – Estrato ' + i].n[2])
       .concat(['Comercial', 'Oficial', 'Industrial', 'Otros'].map(k => FYR[k].n[2])),
     backgroundColor: COL10 }] },
-  options: { responsive: true, scales: { y: { beginAtZero: true } },
-    plugins: { legend: { display: false },
-      tooltip: { callbacks: { label: (c) => ' ' + fmtN(c.parsed.y) + ' cuentas' } },
-      rotuloBarras: { fmt: fmtN } } },
-  plugins: [rotuloBarras]
+  options: { responsive: true,
+    plugins: { legend: LEG, rotuloPie: { fmt: fmtN },
+      tooltip: { callbacks: { label: (c) => ' ' + c.label + ': ' + fmtN(c.parsed) + ' cuentas' } } } },
+  plugins: [rotuloPie, tachaLeyenda]
 });
 const _zt = FYR['TOTAL'];
 new Chart(document.getElementById('chartFyrZona'), {
