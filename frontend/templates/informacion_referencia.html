@@ -778,11 +778,28 @@ const rotuloBarras = {
         ctx.fillStyle = '#1a1a18';
         ctx.textAlign = 'center';
         const texto = fmt(v);
-        // Valor vertical siempre por encima de la línea $0 (base)
-        ctx.translate(pt.x, Math.min(pt.y, pt.base) - 4);
-        ctx.rotate(-Math.PI / 2);
-        ctx.textBaseline = 'bottom';
-        ctx.fillText(texto, 0, 0);
+        // Opción arriba: valor vertical sobre la barra (sobre la línea $0)
+        if (opts.arriba) {
+          ctx.translate(pt.x, Math.min(pt.y, pt.base) - 4);
+          ctx.rotate(-Math.PI / 2);
+          ctx.textBaseline = 'bottom';
+          ctx.fillText(texto, 0, 0);
+          ctx.restore();
+          return;
+        }
+        const altoBarra = Math.abs(pt.base - pt.y);
+        // Si la barra es muy corta para el texto rotado, se pone vertical encima
+        if (altoBarra < ctx.measureText(texto).width + 4) {
+          ctx.translate(pt.x, Math.min(pt.y, pt.base) - 4);
+          ctx.rotate(-Math.PI / 2);
+          ctx.textBaseline = 'bottom';
+          ctx.fillText(texto, 0, 0);
+        } else {
+          ctx.translate(pt.x, pt.y + (pt.base - pt.y) / 2);
+          ctx.rotate(-Math.PI / 2);
+          ctx.textBaseline = 'middle';
+          ctx.fillText(texto, 0, 0);
+        }
         ctx.restore();
       });
     });
