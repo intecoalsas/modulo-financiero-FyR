@@ -261,10 +261,23 @@
       vacia.textContent = 'Seleccione la columna…';
       qSelect.appendChild(vacia);
       var muestras = p.muestras || {};
+      // Columnas que ya respondió el usuario en OTras preguntas del mismo
+      // archivo: una columna no puede servir para dos datos a la vez
+      var usadas = {};
+      Object.keys(respuestas).forEach(function (k) {
+        var r2 = respuestas[k];
+        if (r2.archivo === p.archivo && k !== p.archivo + '|' + p.clave && r2.valor) {
+          usadas[r2.valor] = true;
+        }
+      });
       p.opciones.forEach(function (col) {
         var op = document.createElement('option');
         op.value = col;
         op.textContent = muestras[col] ? col + '  (ej: ' + muestras[col] + ')' : col;
+        if (usadas[col]) {
+          op.disabled = true;
+          op.textContent += ' — ya elegida';
+        }
         qSelect.appendChild(op);
       });
       var previa = respuestas[p.archivo + '|' + p.clave];
@@ -275,7 +288,7 @@
       var fd = new FormData();
       Object.keys(respuestas).forEach(function (clave) {
         var r = respuestas[clave];
-        fd.append(r.archivo === 'facturación' ? 'col_fact_' + clave : 'col_rec_' + clave, r.valor);
+        fd.append(r.archivo === 'facturación' ? 'col_fact_' + r.clave : 'col_rec_' + r.clave, r.valor);
       });
       fetch(sesionT, { method: 'POST', body: fd, headers: { 'X-Requested-With': 'XMLHttpRequest' } })
         .then(function (r) { return r.json(); })

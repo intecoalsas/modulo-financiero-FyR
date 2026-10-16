@@ -585,13 +585,16 @@ def procesar_metadatos(t):
     headers_f = p.get("headers_f", [])
     headers_r = p.get("headers_r", [])
 
-    # Para cada columna que faltaba, se guarda cuál eligió el usuario
-    for clave in p.get("falt_f", []):
+    # Para cada columna que faltaba, se guarda cuál eligió el usuario. Se
+    # recorren TODAS las claves (no solo las que faltaban en la ronda anterior):
+    # si una columna se reasigna, la clave que la tenía antes queda sin mapeo
+    # y hay que volver a pedirla, no dar por bueno el mapa viejo
+    for clave in FACT_CLAVES:
         sel = request.form.get(f"col_fact_{clave}")
         if sel and sel in headers_f:
             map_f[sel] = clave
             _guardar_alias_columna(clave, sel)
-    for clave in p.get("falt_r", []):
+    for clave in REC_CLAVES:
         sel = request.form.get(f"col_rec_{clave}")
         if sel and sel in headers_r:
             map_r[sel] = clave
@@ -644,9 +647,11 @@ def procesar_metadatos(t):
     except Exception:
         pass
 
-    # Se revisa qué sigue faltando
-    falt_f = [c for c in p.get("falt_f", []) if c not in map_f.values()]
-    falt_r = [c for c in p.get("falt_r", []) if c not in map_r.values()]
+    # Se revisa qué sigue faltando. Se compara contra TODAS las claves, no
+    # contra la lista guardada: si una columna se reasignó, la clave anterior
+    # quedó sin mapeo y debe volver a pedirse
+    falt_f = [c for c in FACT_CLAVES if c not in map_f.values()]
+    falt_r = [c for c in REC_CLAVES if c not in map_r.values()]
 
     faltantes = []
     if falt_f or falt_r:

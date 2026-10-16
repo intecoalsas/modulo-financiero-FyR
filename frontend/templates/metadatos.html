@@ -203,6 +203,51 @@
   var zona = document.getElementById('zona-progreso');
   var barra = document.getElementById('barra-progreso');
   var txt = document.getElementById('txt-progreso');
+
+  // ---- Columnas repetidas: una columna no puede servir para dos datos ----
+  // (si el usuario la elige dos veces, el servidor sobrescribe el mapeo,
+  //  falta una clave y el formulario se reinicia perdiendo las respuestas)
+  var HF = {{ p.headers_f | tojson }};
+  var HR = {{ p.headers_r | tojson }};
+  function enF(v) { return HF.indexOf(v) >= 0; }
+  var selCols = Array.prototype.slice.call(
+    form.querySelectorAll('select[name^="col_fact_"], select[name^="col_rec_"]'));
+  var selMun = form.querySelector('select[name="municipio_col"]');
+  var selFec = form.querySelector('select[name="fecha_col"]');
+
+  function sincronizar() {
+    var F = {}, R = {};
+    selCols.forEach(function (s) {
+      if (!s.value) return;
+      if (s.name.indexOf('col_fact_') === 0) { F[s.value] = true; } else { R[s.value] = true; }
+    });
+    [selMun, selFec].forEach(function (s) {
+      // El servidor asigna municipio/fecha a facturación si la columna está
+      // en ese archivo; si no, a recaudo
+      if (!s || !s.value || s.value.indexOf('__') === 0) return;
+      if (enF(s.value)) { F[s.value] = true; } else { R[s.value] = true; }
+    });
+    selCols.forEach(function (s) {
+      var tomadas = s.name.indexOf('col_fact_') === 0 ? F : R;
+      Array.prototype.forEach.call(s.options, function (op) {
+        if (!op.value || op.value === s.value) { op.disabled = false; return; }
+        op.disabled = !!tomadas[op.value];
+      });
+    });
+    [selMun, selFec].forEach(function (s) {
+      if (!s) return;
+      Array.prototype.forEach.call(s.options, function (op) {
+        if (!op.value || op.value.indexOf('__') === 0 || op.value === s.value) {
+          op.disabled = false; return;
+        }
+        op.disabled = !!(enF(op.value) ? F[op.value] : R[op.value]);
+      });
+    });
+  }
+  selCols.concat([selMun, selFec].filter(Boolean)).forEach(function (s) {
+    s.addEventListener('change', sincronizar);
+  });
+  sincronizar();
   var pasos = [
     ['Depurando facturación…', 30],
     ['Depurando recaudo…', 50],
