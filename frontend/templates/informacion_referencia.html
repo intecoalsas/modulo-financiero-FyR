@@ -679,7 +679,7 @@ if (ACC_REF){
   }
 }
 
-function fmtN(n){ if (n == null || isNaN(Number(n))) return ''; return Math.round(n).toLocaleString('es-CO'); }
+function fmtN(n){ if (n == null || isNaN(Number(n))) return ''; return Number(n).toLocaleString('es-CO'); }
 function fmtCorto(n){
   const a = Math.abs(n);
   if (a >= 1e6) return '$' + (n/1e6).toLocaleString('es-CO',{maximumFractionDigits:1}) + 'M';
