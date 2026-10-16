@@ -12,24 +12,34 @@ MUNICIPIO = "Villavicencio"
 COMERCIALIZADORA = "EMSA"
 EMPRESA_NOMBRE = "ELECTRIFICADORA DEL META S.A. (EMSA)"
 
-# Índices (0‑based) de las columnas del informe exógeno de EMSA
-COL_ID = 12          # NUMERO DE IDENTIFICACION USUARIO
-COL_MERCADO = 14     # MERCADO (REGULADO O NO REGULADO)
-COL_SECTOR = 15      # SECTOR (URBANO - RURAL)
-COL_DESTINO = 16     # DESTINO ECONOMICO DEL PREDIO
-COL_ESTRATO = 17     # ESTRATO SOCIOECONOMICO
-COL_FACTURA = 18     # NUMERO DE FACTURA
-COL_PERIODO = 21     # PERIODO / MES  (ej. 2026/6)
-COL_KWH = 24         # CONSUMO DE KILOVATIOS (KW/H)
-COL_CONS_VALOR = 26  # VALOR CONSUMO DE ENERGIA (BASE PARA FACTURACION)
-COL_IMP_FACT = 27    # VALOR IMPUESTO DE ALUMBRADO PUBLICO FACTURADO
-COL_IMP_REC = 28     # VALOR IMPUESTO DE ALUMBRADO PUBLICO RECAUDADO
-COL_APELLIDO1 = 3
-COL_APELLIDO2 = 4
-COL_NOMBRE1 = 5
-COL_NOMBRE2 = 6
-COL_RAZON = 7        # RAZON SOCIAL
-COL_DIRECCION = 8    # DIRECCION DE SUMINISTRO DEL SERVICIO
+# Nombres de columnas que se buscan por nombre (no por posición, porque
+# el formato del exógeno cambia: a veces trae BARRIO/CORREO, a veces no)
+_NOMBRES_COL = {
+    "id": "NUMERO DE IDENTIFICACION USUARIO",
+    "mercado": "MERCADO (REGULADO O NO REGULADO)",
+    "sector": "SECTOR (URBANO – RURAL)",
+    "destino": "DESTINO ECONOMICO DEL PREDIO",
+    "estrato": "ESTRATO SOCIOECONOMICO",
+    "factura": "NUMERO DE FACTURA",
+    "periodo": "PERIODO / MES",
+    "kwh": "CONSUMO DE KILOVATIOS (KW/H)",
+    "cons_valor": "VALOR CONSUMO DE ENERGIA (BASE PARA FACTURACION)",
+    "imp_fact": "VALOR IMPUESTO DE ALUMBRADO PUBLICO FACTURADO",
+    "imp_rec": "VALOR IMPUESTO DE ALUMBRADO PUBLICO RECAUDADO",
+    "apellido1": "APELLIDO 1",
+    "apellido2": "APELLIDO 2",
+    "nombre1": "NOMBRE 1",
+    "nombre2": "NOMBRE 2",
+    "razon": "RAZON SOCIAL",
+    "direccion": "DIRECCION DE SUMINISTRO DEL SERVICIO",
+}
+
+
+def _resolver_columnas(raw):
+    """Devuelve un dict con el índice (0-based) de cada columna por nombre.
+    Si un nombre no se encuentra, su valor es None."""
+    cols = {str(c).strip().upper(): i for i, c in enumerate(raw.columns)}
+    return {k: cols.get(v.strip().upper()) for k, v in _NOMBRES_COL.items()}
 
 # Tarifas del Acuerdo 515 de 12/04/2021 (Art. 242): % sobre la LCEE
 TARIFAS_LCEE_2026 = {
@@ -137,25 +147,39 @@ def leer_exogena_emisa(path):
     from core.utils import leer_excel
     raw = leer_excel(path, sheet_name="Exogena", header=3, dtype=str)
 
-    ids = raw.iloc[:, COL_ID].map(_id)
-    mercado = raw.iloc[:, COL_MERCADO].map(_str)
-    sector = raw.iloc[:, COL_SECTOR].map(_str)
-    destino = raw.iloc[:, COL_DESTINO].map(_str)
-    estrato = raw.iloc[:, COL_ESTRATO].map(_str)
-    direccion = raw.iloc[:, COL_DIRECCION].map(_str)
+    # Se resuelven las columnas por nombre (el formato cambia entre archivos)
+    C = _resolver_columnas(raw)
+
+    def _col(clave):
+        """Devuelve la serie de la columna, o Series vacía si no existe."""
+        idx = C.get(clave)
+        if idx is None:
+            return pd.Series([None] * len(raw), index=raw.index)
+        return raw.iloc[:, idx]
+
+    ids = _col("id").map(_id)
+    mercado = _col("mercado").map(_str)
+    sector = _col("sector").map(_str)
+    destino = _col("destino").map(_str)
+    estrato = _col("estrato").map(_str)
+    direccion = _col("direccion").map(_str)
 
     nombres = []
     for t in raw.itertuples(index=False, name=None):
         nombres.append(_nombre(
-            t[COL_NOMBRE1], t[COL_NOMBRE2], t[COL_APELLIDO1], t[COL_APELLIDO2], t[COL_RAZON],
+            t[C["nombre1"]] if C.get("nombre1") is not None else None,
+            t[C["nombre2"]] if C.get("nombre2") is not None else None,
+            t[C["apellido1"]] if C.get("apellido1") is not None else None,
+            t[C["apellido2"]] if C.get("apellido2") is not None else None,
+            t[C["razon"]] if C.get("razon") is not None else None,
         ))
 
     fact = pd.DataFrame({
         "Id_cliente": ids,
-        "numero_factura": raw.iloc[:, COL_FACTURA].map(_str),
-        "monto_AP": raw.iloc[:, COL_IMP_FACT].map(lambda v: _num(v) or 0.0),
-        "monto_kwh": raw.iloc[:, COL_CONS_VALOR].map(_num),
-        "consumo_kwh": raw.iloc[:, COL_KWH].map(_num),
+        "numero_factura": _col("factura").map(_str),
+        "monto_AP": _col("imp_fact").map(lambda v: _num(v) or 0.0),
+        "monto_kwh": _col("cons_valor").map(_num),
+        "consumo_kwh": _col("kwh").map(_num),
         "Empresa": EMPRESA_NOMBRE,
         "Nombre": nombres,
         "dirección": direccion,
@@ -168,7 +192,7 @@ def leer_exogena_emisa(path):
 
     rec = pd.DataFrame({
         "Id_cliente": ids,
-        "valor_recaudado": raw.iloc[:, COL_IMP_REC].map(lambda v: _num(v) or 0.0),
+        "valor_recaudado": _col("imp_rec").map(lambda v: _num(v) or 0.0),
         "Empresa": EMPRESA_NOMBRE,
         "mercado": mercado,
         "nombre": nombres,
@@ -183,7 +207,7 @@ def leer_exogena_emisa(path):
     rec = rec[rec["Id_cliente"].notna()].copy()
 
     # Se intenta sacar el periodo desde la columna "PERIODO / MES" (ej. "2026/6")
-    periodos = [_str(v) for v in raw.iloc[:, COL_PERIODO].tolist()]
+    periodos = [_str(v) for v in _col("periodo").tolist()]
     periodos = [p for p in periodos if "/" in p]
     periodo = None
     if periodos:

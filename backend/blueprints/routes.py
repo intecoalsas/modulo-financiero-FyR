@@ -45,7 +45,7 @@ CARGADO = False
 
 # Extensiones permitidas y tamaño máximo (MB) para los archivos subidos
 EXT_PERMITIDAS = {".xlsx", ".xls"}
-MAX_MB = int(os.environ.get("MAX_UPLOAD_MB", "60"))
+MAX_MB = int(os.environ.get("MAX_UPLOAD_MB", "80"))
 
 
 def _auditar(accion, detalle=""):

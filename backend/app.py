@@ -35,8 +35,8 @@ if not _db_url:
 # La base de datos es un solo archivo sqlite que vive en backend/instance
 app.config["SQLALCHEMY_DATABASE_URI"] = _db_url
 app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
-# Tamaño máximo de subida (MB) por variable de entorno (60 por Villavicencio)
-app.config["MAX_CONTENT_LENGTH"] = int(os.environ.get("MAX_UPLOAD_MB", "60")) * 1024 * 1024
+# Tamaño máximo de subida (MB) por variable de entorno (80 para Villavicencio)
+app.config["MAX_CONTENT_LENGTH"] = int(os.environ.get("MAX_UPLOAD_MB", "80")) * 1024 * 1024
 
 # Filtro para mostrar fechas UTC en hora de Colombia (12h AM/PM)
 @app.template_filter("hora_col")
