@@ -126,6 +126,10 @@
                   <h6 class="fw-bold mb-2">Comportamiento por clasificación de usuarios (acumulado {{ anio }})</h6>
                   <div style="position:relative;height:320px"><canvas id="chartFyrAnual"></canvas></div>
                 </div>
+                <div class="mt-4">
+                  <h6 class="fw-bold mb-2">Comportamiento anual de usuarios por clasificación ({{ anio }})</h6>
+                  <div style="position:relative;height:320px"><canvas id="chartFyrUsuarios"></canvas></div>
+                </div>
                 {% endif %}
                 <div class="small text-muted mt-2">
                   <i class="bi bi-info-circle"></i>
@@ -671,7 +675,7 @@ if (ACC_REF){
   }
 }
 
-function fmtN(n){ return Math.round(n).toLocaleString('es-CO'); }
+function fmtN(n){ if (n == null || isNaN(Number(n))) return ''; return Math.round(n).toLocaleString('es-CO'); }
 function fmtCorto(n){
   const a = Math.abs(n);
   if (a >= 1e6) return '$' + (n/1e6).toLocaleString('es-CO',{maximumFractionDigits:1}) + 'M';
@@ -847,6 +851,47 @@ if (document.getElementById('chartFyrAnual') && Object.keys(fyrAnual).length){
     },
     plugins:[tachaLeyenda, rotuloBarras]
   });
+}
+
+// Gráfica de líneas: total de usuarios por clasificación mes a mes (solo Villavicencio)
+if (document.getElementById('chartFyrUsuarios')){
+  const CLAS_US = [1,2,3,4,5,6].map(i => 'Estrato ' + i)
+    .concat(['Comercial', 'Oficial', 'Industrial', 'Otros']);
+  const CLAS_US_KEY = k => k.startsWith('Estrato ')
+    ? 'Residencial – Estrato ' + k.split(' ')[1] : k;
+  // Colores diferenciados por línea (una por clasificación)
+  const COL_US = ['#BFBA6B','#D9CF43','#50C878','#A93226','#4A6FA5','#B07AA1',
+                  '#E2DF2B','#1E7A1E','#6C757D','#2C3E50'];
+  const nombresUs = ['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octiembre','Noviembre','Diciembre'];
+  const usuariosMes = (clave) => nombresUs.map((_, i) => {
+    const d = mesesYear[String(i + 1)];
+    if (!d || !d.fyr) return null;
+    const v = d.fyr[clave];
+    return v && v.n != null ? v.n : null;
+  });
+  const hayDatos = CLAS_US.some(k => usuariosMes(CLAS_US_KEY(k)).some(v => v != null));
+  if (hayDatos){
+    new Chart(document.getElementById('chartFyrUsuarios'),{
+      type:'line',
+      data:{
+        labels: nombresUs,
+        datasets: CLAS_US.map((k, i) => ({
+          label: k,
+          data: usuariosMes(CLAS_US_KEY(k)),
+          borderColor: COL_US[i],
+          backgroundColor: COL_US[i],
+          fill: false, tension: 0.3, spanGaps: true, pointRadius: 3
+        }))
+      },
+      options:{responsive:true, maintainAspectRatio:false, plugins:{
+        legend:{position:'top', onClick:alternarPorcion},
+        tooltip:{callbacks:{label:(c)=>' '+c.dataset.label+': '+fmtN(c.parsed.y)}}
+      }, scales:{
+        y:{ticks:{callback:(v)=>fmtN(v)}}
+      }},
+      plugins:[tachaLeyenda, valoresPuntos]
+    });
+  }
 }
 {% endif %}
 
