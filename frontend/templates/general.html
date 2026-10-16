@@ -165,6 +165,25 @@
         <div class="card border-0 shadow-sm h-100">
           <div class="card-header"><h6 class="mb-0">Distribución de cuentas: Urbana vs Rural</h6></div>
           <div class="card-body"><canvas id="chartFyrZona" height="120"></canvas></div>
+          <div class="card-body p-0">
+            <table class="table table-sm table-striped table-hover mb-0 tabla-compacta">
+              <thead class="table-light">
+                <tr><th>Clasificación</th><th class="text-end">Facturación ($)</th><th class="text-end">Recaudo ($)</th><th class="text-end">Diferencia ($)</th></tr>
+              </thead>
+              <tbody>
+                {% for k in ["Estrato 1","Estrato 2","Estrato 3","Estrato 4","Estrato 5","Estrato 6","Comercial","Oficial","Industrial","Otros"] %}
+                {% set fk = "Residencial – Estrato " + k.split(" ")[1] if k.startswith("Estrato ") else k %}
+                {% set f = fyr[fk]["fact"][2] %}{% set r = fyr[fk]["rec"][2] %}{% set d = r - f %}
+                <tr>
+                  <td>{{ k }}</td>
+                  <td class="text-end">${{ "{:,.0f}".format(f).replace(",", ".") }}</td>
+                  <td class="text-end">${{ "{:,.0f}".format(r).replace(",", ".") }}</td>
+                  <td class="text-end fw-bold {{ 'text-danger' if d < 0 else 'text-success' }}">{{ "+" if d >= 0 else "" }}${{ "{:,.0f}".format(d).replace(",", ".") }}</td>
+                </tr>
+                {% endfor %}
+              </tbody>
+            </table>
+          </div>
         </div>
       </div>
     </div>
