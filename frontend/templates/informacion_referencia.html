@@ -777,10 +777,12 @@ const rotuloBarras = {
         ctx.fillStyle = '#1a1a18';
         ctx.textAlign = 'center';
         const texto = fmt(v);
-        // Opción arriba: valor horizontal sobre la barra (sobre la línea $0)
+        // Opción arriba: valor vertical sobre la barra (sobre la línea $0)
         if (opts.arriba) {
+          ctx.translate(pt.x, Math.min(pt.y, pt.base) - 4);
+          ctx.rotate(-Math.PI / 2);
           ctx.textBaseline = 'bottom';
-          ctx.fillText(texto, pt.x, Math.min(pt.y, pt.base) - 3);
+          ctx.fillText(texto, 0, 0);
           ctx.restore();
           return;
         }
