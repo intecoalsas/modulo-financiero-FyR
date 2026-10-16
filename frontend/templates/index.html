@@ -219,7 +219,7 @@
       if (timer) { clearInterval(timer); timer = null; }
     }
     function irA(url) {
-      txt.textContent = 'Listo, redirigiendo…';
+      txt.textContent = '100% — Completado';
       barra.style.width = '100%';
       barra.setAttribute('aria-valuenow', 100);
       setTimeout(function () { window.location.href = url; }, 350);
