@@ -144,7 +144,9 @@ def _finalizar_carga(municipio, comercializadora, anio, mes, fact_path, rec_path
             ensure_cartera_anio(c_obj, anio)
         especiales_data = build_especiales(mes=mes, comercializadora=c_obj,
                                            anio=anio, fact_path=fact_path,
-                                           rec_path=rec_path)
+                                           rec_path=rec_path,
+                                           mapping_fact=mapping_fact,
+                                           mapping_rec=mapping_rec)
     except Exception as exc:
         flash(f"Error al procesar: {exc}", "danger")
         dest = url_for("main.index")

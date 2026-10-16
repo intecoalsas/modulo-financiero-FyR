@@ -215,10 +215,12 @@ ESPECIALES = [
 # Si se pasan los archivos y la comercializadora, los calcula desde ahí;
 # si no, usa la lista fija ESPECIALES.
 def build_especiales(mes=None, comercializadora=None, anio=None,
-                     fact_path=None, rec_path=None):
+                     fact_path=None, rec_path=None,
+                     mapping_fact=None, mapping_rec=None):
     if comercializadora and fact_path and rec_path and anio:
         result = build_especiales_desde_archivos(
-            mes, anio, comercializadora, fact_path, rec_path)
+            mes, anio, comercializadora, fact_path, rec_path,
+            mapping_fact=mapping_fact, mapping_rec=mapping_rec)
         if result is not None:
             return result
     # TEC = tope máximo del impuesto que se puede cobrar
@@ -355,7 +357,8 @@ def _compact_analisis(filas):
 
 # Igual que build_especiales pero calculando con los archivos reales que se subieron.
 # Usa la cartera guardada de la comercializadora para saber las tarifas de cada cuenta.
-def build_especiales_desde_archivos(mes, anio, comercializadora, fact_path, rec_path):
+def build_especiales_desde_archivos(mes, anio, comercializadora, fact_path, rec_path,
+                                    mapping_fact=None, mapping_rec=None):
     TEC = 35018100
 
     # Trae la cartera (clientes con sus tarifas) del año indicado
@@ -376,11 +379,17 @@ def build_especiales_desde_archivos(mes, anio, comercializadora, fact_path, rec_
     import warnings
     warnings.simplefilter("ignore")
 
-    # Se leen los archivos y se guarda el id de cuenta como texto para poder comparar
+    # Se leen los archivos y se aplica el mapeo de columnas (si el usuario
+    # tuvo que decir cómo se llaman las columnas, aquí se renombran antes
+    # de usarlas; sin esto revienta con KeyError 'Id_cliente')
     df_f = leer_excel(fact_path)
+    if mapping_fact:
+        df_f = df_f.rename(columns=mapping_fact)
     df_f["id_s"] = df_f["Id_cliente"].apply(lambda v: str(int(v)) if pd.notna(v) else "")
 
     df_r = leer_excel(rec_path)
+    if mapping_rec:
+        df_r = df_r.rename(columns=mapping_rec)
     df_r["id_s"] = df_r["Id_cliente"].apply(lambda v: str(int(v)) if pd.notna(v) else "")
 
     # Los archivos mandan en el nombre: se toma el NOMBRE_USUARIO del archivo
