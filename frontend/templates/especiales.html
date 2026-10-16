@@ -11,17 +11,22 @@
         {% if periodo %}<span class="badge bg-info text-dark ms-2">{{ municipio }} · {{ comercializadora }} · {{ periodo }}</span>{% endif %}
       </h3>
       <div class="d-flex gap-2">
+        {# Excel Profesional deshabilitado temporalmente (rendimiento)
         {% if report_id %}
         <a href="{{ url_for('main.descargar_excel', report_id=report_id) }}" class="btn btn-success">
           <i class="bi bi-file-earmark-excel"></i> Excel Profesional
-        </a>
-        <a href="{{ url_for('main.descargar_word', report_id=report_id, tipo='especiales') }}" class="btn btn-primary">
-          <i class="bi bi-star-fill"></i> Word Especiales
         </a>
         {% else %}
         <a href="{{ url_for('main.descargar_excel') }}" class="btn btn-success">
           <i class="bi bi-file-earmark-excel"></i> Excel Profesional
         </a>
+        {% endif %}
+        #}
+        {% if report_id %}
+        <a href="{{ url_for('main.descargar_word', report_id=report_id, tipo='especiales') }}" class="btn btn-primary">
+          <i class="bi bi-star-fill"></i> Word Especiales
+        </a>
+        {% else %}
         <a href="{{ url_for('main.descargar_word', tipo='especiales') }}" class="btn btn-primary">
           <i class="bi bi-star-fill"></i> Word Especiales
         </a>
@@ -322,12 +327,20 @@ const rotuloBarras = {
         ctx.font = 'bold 10px sans-serif';
         ctx.fillStyle = '#1a1a18';
         ctx.textAlign = 'center';
+        const altoBarra = Math.abs(pt.base - pt.y);
         const texto = fmt(v);
-        // Valor vertical siempre por encima de la línea $0 (base)
-        ctx.translate(pt.x, Math.min(pt.y, pt.base) - 4);
-        ctx.rotate(-Math.PI / 2);
-        ctx.textBaseline = 'bottom';
-        ctx.fillText(texto, 0, 0);
+        // Si la barra es muy corta para el texto rotado, se pone vertical encima
+        if (altoBarra < ctx.measureText(texto).width + 4) {
+          ctx.translate(pt.x, Math.min(pt.y, pt.base) - 4);
+          ctx.rotate(-Math.PI / 2);
+          ctx.textBaseline = 'bottom';
+          ctx.fillText(texto, 0, 0);
+        } else {
+          ctx.translate(pt.x, pt.y + (pt.base - pt.y) / 2);
+          ctx.rotate(-Math.PI / 2);
+          ctx.textBaseline = 'middle';
+          ctx.fillText(texto, 0, 0);
+        }
         ctx.restore();
       });
     });
