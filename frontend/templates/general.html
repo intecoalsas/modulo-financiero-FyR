@@ -93,7 +93,7 @@
     </div>
 
     {% macro tabla_zona(titulo, met, fmt, dinero=false) %}
-    <div class="card border-0 shadow-sm mb-4">
+    <div class="card border-0 shadow-sm h-100">
       <div class="card-header bg-secondary text-white"><h6 class="mb-0">{{ titulo }}</h6></div>
       <div class="card-body p-0">
         <table class="table table-sm table-striped table-hover mb-0 tabla-compacta">
@@ -116,31 +116,40 @@
     </div>
     {% endmacro %}
 
-    {{ tabla_zona("1. Cantidad de cuentas / usuarios por clasificación y zona", "n", none) }}
-    {{ tabla_zona("2. Valores facturados ($) por clasificación y zona", "fact", none, true) }}
-    {{ tabla_zona("3. Valores recaudados ($) por clasificación y zona", "rec", none, true) }}
+    <!-- Tablas 1 y 2 lado a lado -->
+    <div class="row g-4 mb-4">
+      <div class="col-md-6">{{ tabla_zona("1. Cantidad de cuentas / usuarios por clasificación y zona", "n", none) }}</div>
+      <div class="col-md-6">{{ tabla_zona("2. Valores facturados ($) por clasificación y zona", "fact", none, true) }}</div>
+    </div>
 
-    <!-- 4. Consumo -->
-    <div class="card border-0 shadow-sm mb-4">
-      <div class="card-header bg-secondary text-white"><h6 class="mb-0">4. Consumo de energía: base gravable vs facturación</h6></div>
-      <div class="card-body p-0">
-        <table class="table table-sm table-striped table-hover mb-0 tabla-compacta">
-          <thead class="table-dark">
-            <tr><th>Clasificación</th><th class="text-end">Base gravable – consumo energía ($)</th><th class="text-end">Impuesto facturado ($)</th><th class="text-end">Impuesto / Base (%)</th><th class="text-end">Consumo (kWh)</th></tr>
-          </thead>
-          <tbody>
-            {% for k in fyr_orden %}
-            {% set b = fyr[k]["base"][2] %}{% set f = fyr[k]["fact"][2] %}{% set w = fyr[k]["kwh"][2] %}
-            <tr class="{{ 'table-warning fw-bold' if k == 'TOTAL' else ('fw-bold' if k == 'Subtotal Residencial' else '') }}">
-              <td>{{ k }}</td>
-              <td class="text-end">${{ "{:,.0f}".format(b).replace(",", ".") }}</td>
-              <td class="text-end">${{ "{:,.0f}".format(f).replace(",", ".") }}</td>
-              <td class="text-end">{{ "%.1f"|format(100*f/b) if b else "0.0" }}%</td>
-              <td class="text-end">{{ "{:,.0f}".format(w).replace(",", ".") }}</td>
-            </tr>
-            {% endfor %}
-          </tbody>
-        </table>
+    <!-- Tablas 3 y 4 lado a lado -->
+    <div class="row g-4 mb-4">
+      <div class="col-md-6">{{ tabla_zona("3. Valores recaudados ($) por clasificación y zona", "rec", none, true) }}</div>
+
+      <!-- 4. Consumo -->
+      <div class="col-md-6">
+        <div class="card border-0 shadow-sm h-100">
+          <div class="card-header bg-secondary text-white"><h6 class="mb-0">4. Consumo de energía: base gravable vs facturación</h6></div>
+          <div class="card-body p-0">
+            <table class="table table-sm table-striped table-hover mb-0 tabla-compacta">
+              <thead class="table-dark">
+                <tr><th>Clasificación</th><th class="text-end">Base gravable ($)</th><th class="text-end">Impuesto facturado ($)</th><th class="text-end">Imp. / Base (%)</th><th class="text-end">Consumo (kWh)</th></tr>
+              </thead>
+              <tbody>
+                {% for k in fyr_orden %}
+                {% set b = fyr[k]["base"][2] %}{% set f = fyr[k]["fact"][2] %}{% set w = fyr[k]["kwh"][2] %}
+                <tr class="{{ 'table-warning fw-bold' if k == 'TOTAL' else ('fw-bold' if k == 'Subtotal Residencial' else '') }}">
+                  <td>{{ k }}</td>
+                  <td class="text-end">${{ "{:,.0f}".format(b).replace(",", ".") }}</td>
+                  <td class="text-end">${{ "{:,.0f}".format(f).replace(",", ".") }}</td>
+                  <td class="text-end">{{ "%.1f"|format(100*f/b) if b else "0.0" }}%</td>
+                  <td class="text-end">{{ "{:,.0f}".format(w).replace(",", ".") }}</td>
+                </tr>
+                {% endfor %}
+              </tbody>
+            </table>
+          </div>
+        </div>
       </div>
     </div>
 
@@ -536,8 +545,15 @@ function alternarPorcion(e, item, legend) {
 
 {% if es_emsa %}
 const FYR = {{ fyr|tojson }};
-const CLAS5 = ['Subtotal Residencial', 'Comercial', 'Oficial', 'Industrial', 'Otros'];
-const fF = k => FYR[k].fact[2], fR = k => FYR[k].rec[2];
+// Etiquetas: estratos 1-6 (residencial) + las demás clasificaciones
+const CLAS_ESTR = [1, 2, 3, 4, 5, 6].map(i => 'Estrato ' + i)
+  .concat(['Comercial', 'Oficial', 'Industrial', 'Otros']);
+// Clave original en FYR para cada etiqueta
+const CLAS_KEY = k => k.startsWith('Estrato ')
+  ? 'Residencial – Estrato ' + k.split(' ')[1] : k;
+const fF = k => FYR[CLAS_KEY(k)].fact[2];
+const fR = k => FYR[CLAS_KEY(k)].rec[2];
+const fD = k => fR(k) - fF(k);
 const LEG = { position: 'right', onClick: alternarPorcion, labels: { color: '#0D0D0D', font: { size: 10 },
   generateLabels(chart) {
     const ds = chart.data.datasets[0];
@@ -579,9 +595,10 @@ new Chart(document.getElementById('chartFyrZona'), {
 });
 new Chart(document.getElementById('chartFyrFactRec'), {
   type: 'bar',
-  data: { labels: CLAS5, datasets: [
-    { label: 'Facturado', data: CLAS5.map(fF), backgroundColor: '#D9CF43' },
-    { label: 'Recaudado', data: CLAS5.map(fR), backgroundColor: '#50C878' } ] },
+  data: { labels: CLAS_ESTR, datasets: [
+    { label: 'Facturado', data: CLAS_ESTR.map(fF), backgroundColor: '#D9CF43' },
+    { label: 'Recaudado', data: CLAS_ESTR.map(fR), backgroundColor: '#50C878' },
+    { label: 'Diferencia', data: CLAS_ESTR.map(fD), backgroundColor: '#BFBA6B' } ] },
   options: { responsive: true, scales: { y: { beginAtZero: true } },
     plugins: { legend: { position: 'top' },
       tooltip: { callbacks: { label: (c) => ' ' + c.dataset.label + ': ' + fmtCorto(c.parsed.y) } },
