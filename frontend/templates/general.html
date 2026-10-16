@@ -153,30 +153,6 @@
       </div>
     </div>
 
-    <!-- 5. Recaudo vs facturación -->
-    <div class="card border-0 shadow-sm mb-4">
-      <div class="card-header bg-secondary text-white"><h6 class="mb-0">5. Recaudo vs facturación (por clasificación)</h6></div>
-      <div class="card-body p-0">
-        <table class="table table-sm table-striped table-hover mb-0 tabla-compacta">
-          <thead class="table-dark">
-            <tr><th>Clasificación</th><th class="text-end">Impuesto facturado ($)</th><th class="text-end">Impuesto recaudado ($)</th><th class="text-end">Diferencia recaudo-factura ($)</th><th class="text-end">% Recaudo</th></tr>
-          </thead>
-          <tbody>
-            {% for k in fyr_orden %}
-            {% set f = fyr[k]["fact"][2] %}{% set r = fyr[k]["rec"][2] %}{% set d = r - f %}
-            <tr class="{{ 'table-warning fw-bold' if k == 'TOTAL' else ('fw-bold' if k == 'Subtotal Residencial' else '') }}">
-              <td>{{ k }}</td>
-              <td class="text-end">${{ "{:,.0f}".format(f).replace(",", ".") }}</td>
-              <td class="text-end">${{ "{:,.0f}".format(r).replace(",", ".") }}</td>
-              <td class="text-end {{ 'text-danger' if d < 0 else 'text-success' }}">${{ "{:,.0f}".format(d).replace(",", ".") }}</td>
-              <td class="text-end fw-bold">{{ "%.1f"|format(100*r/f) if f else "0.0" }}%</td>
-            </tr>
-            {% endfor %}
-          </tbody>
-        </table>
-      </div>
-    </div>
-
     <!-- Gráficas hoja FyR -->
     <div class="row g-4 mb-4">
       <div class="col-lg-6">
@@ -196,7 +172,7 @@
       <div class="col-lg-12">
         <div class="card border-0 shadow-sm h-100">
           <div class="card-header"><h6 class="mb-0">Facturación vs Recaudo por clasificación ($)</h6></div>
-          <div class="card-body"><canvas id="chartFyrFactRec" height="140"></canvas></div>
+          <div class="card-body"><canvas id="chartFyrFactRec" height="100"></canvas></div>
         </div>
       </div>
     </div>
@@ -564,7 +540,6 @@ const CLAS_KEY = k => k.startsWith('Estrato ')
   ? 'Residencial – Estrato ' + k.split(' ')[1] : k;
 const fF = k => FYR[CLAS_KEY(k)].fact[2];
 const fR = k => FYR[CLAS_KEY(k)].rec[2];
-const fD = k => fR(k) - fF(k);
 const LEG = { position: 'right', onClick: alternarPorcion, labels: { color: '#0D0D0D', font: { size: 10 },
   generateLabels(chart) {
     const ds = chart.data.datasets[0];
@@ -608,8 +583,7 @@ new Chart(document.getElementById('chartFyrFactRec'), {
   type: 'bar',
   data: { labels: CLAS_ESTR, datasets: [
     { label: 'Facturado', data: CLAS_ESTR.map(fF), backgroundColor: '#D9CF43' },
-    { label: 'Recaudado', data: CLAS_ESTR.map(fR), backgroundColor: '#50C878' },
-    { label: 'Diferencia', data: CLAS_ESTR.map(fD), backgroundColor: '#BFBA6B' } ] },
+    { label: 'Recaudado', data: CLAS_ESTR.map(fR), backgroundColor: '#50C878' } ] },
   options: { responsive: true, scales: { y: { beginAtZero: true } },
     plugins: { legend: { position: 'top' },
       tooltip: { callbacks: { label: (c) => ' ' + c.dataset.label + ': ' + fmtCorto(c.parsed.y) } },
