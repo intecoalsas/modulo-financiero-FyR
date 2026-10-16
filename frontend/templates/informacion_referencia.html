@@ -908,11 +908,12 @@ if (document.getElementById('chartFyrUsuarios') || document.getElementById('char
       },
       options: { responsive: true, maintainAspectRatio: false, plugins: {
         legend: { position: 'top', onClick: alternarPorcion },
-        tooltip: { callbacks: { label: (c) => ' ' + c.dataset.label + ': ' + fmtN(c.parsed.y) + ' usuarios' } }
+        tooltip: { callbacks: { label: (c) => ' ' + c.dataset.label + ': ' + fmtN(c.parsed.y) + ' usuarios' } },
+        valoresPuntos: { fmt: fmtN }
       }, scales: {
         y: { ticks: { callback: (v) => fmtN(v) } }
       }},
-      plugins: [tachaLeyenda, Object.assign({}, valoresPuntos, {opts: {fmt: fmtN}})]
+      plugins: [tachaLeyenda, valoresPuntos]
     });
   });
 }
