@@ -786,7 +786,7 @@ if (document.getElementById('chartAnGral')){
       datasets:[
         {label:'Consumo', data:vals('consumo'), borderColor:'#BFBA6B', backgroundColor:'#BFBA6B', fill:false, tension:0.3, spanGaps:true, pointRadius:3},
         {label:'Facturación', data:vals('facturacion'), borderColor:'#D9CF43', backgroundColor:'#D9CF43', fill:false, tension:0.3, spanGaps:true, pointRadius:3},
-        {label:'Recaudo', data:vals('recaudo'), borderColor:'#1E7A1E', backgroundColor:'#1E7A1E', fill:false, tension:0.3, spanGaps:true, pointRadius:3}
+        {label:'Recaudo', data:vals('recaudo'), borderColor:'#50C878', backgroundColor:'#50C878', fill:false, tension:0.3, spanGaps:true, pointRadius:3}
       ]
     },
     options:{responsive:true, maintainAspectRatio:false, plugins:{
@@ -904,7 +904,7 @@ function showFlash(msg, type){
     box.style.cssText = 'position:fixed;top:20px;right:20px;z-index:2000;padding:12px 18px;border-radius:8px;font-weight:bold;';
     document.body.appendChild(box);
   }
-  box.style.background = type === 'success' ? '#198754' : '#dc3545';
+  box.style.background = type === 'success' ? '#50C878' : '#dc3545';
   box.style.color = '#FFFFFF';
   box.textContent = msg;
   setTimeout(()=> box.remove(), 2500);

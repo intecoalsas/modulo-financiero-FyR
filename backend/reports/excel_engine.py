@@ -22,7 +22,7 @@ SUBTITLE_FONT = Font(name="Calibri", size=14, bold=True, color="0D0D0D")
 KPI_FONT = Font(name="Calibri", size=22, bold=True, color="0D0D0D")
 KPI_LABEL = Font(name="Calibri", size=10, color="666666")
 
-GREEN_FONT = Font(name="Calibri", size=11, color="1E7A1E")
+GREEN_FONT = Font(name="Calibri", size=11, color="50C878")
 RED_FONT = Font(name="Calibri", size=11, color="A93226")
 GREEN_FILL = PatternFill("solid", fgColor="D4EDDA")
 RED_FILL = PatternFill("solid", fgColor="F8D7DA")

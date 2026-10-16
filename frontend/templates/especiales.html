@@ -48,7 +48,7 @@
         </div>
       </div>
       <div class="col-md-3">
-        <div class="card border-0 shadow" style="background:#198754">
+        <div class="card border-0 shadow" style="background:#50C878">
           <div class="card-body text-center text-white">
             <div class="fs-4 fw-bold">${{ "{:,.0f}".format(data.totales.saldo_pos).replace(",", ".") }}</div>
             <small>Saldo +</small>
@@ -340,7 +340,7 @@ new Chart(document.getElementById('chartUnico'),{
     labels:grupos,
     datasets:[
       {label:'Facturación',data:grupos.map(g=>pc[g].fact),backgroundColor:'#D9CF43'},
-      {label:'Recaudo',data:grupos.map(g=>pc[g].rec),backgroundColor:'#1E7A1E'},
+      {label:'Recaudo',data:grupos.map(g=>pc[g].rec),backgroundColor:'#50C878'},
       {label:'Diferencia (Rec - Fact)',data:dfU,
        backgroundColor:dfU.map(v => v>=0 ? '#BFBA6B' : '#A93226')}
     ]
@@ -505,7 +505,7 @@ function showFlash(msg, type){
     box.style.cssText = 'position:fixed;top:20px;right:20px;z-index:2000;padding:12px 18px;border-radius:8px;font-weight:bold;';
     document.body.appendChild(box);
   }
-  box.style.background = type === 'success' ? '#198754' : '#dc3545';
+  box.style.background = type === 'success' ? '#50C878' : '#dc3545';
   box.style.color = '#0D0D0D';
   box.textContent = msg;
   setTimeout(()=> box.remove(), 2500);
@@ -514,7 +514,7 @@ function showFlash(msg, type){
 // ---- Gráficas de anomalías (doughnut) con total ----
 const anal = {{ (data.analisis if data.analisis is defined else {}) | tojson }};
 const PALETA = [
-  '#D9CF43', '#1E7A1E', '#BFBA6B', '#A93226', '#E2DF2B', '#BFBFBF', '#8a7d15'
+  '#D9CF43', '#50C878', '#BFBA6B', '#A93226', '#E2DF2B', '#BFBFBF', '#8a7d15'
 ];
 
 const totalCentro = {
