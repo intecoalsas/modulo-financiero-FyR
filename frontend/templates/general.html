@@ -446,6 +446,7 @@ const rotuloBarras = {
     const fmt = opts.fmt || fmtCorto;
     const {ctx} = chart;
     chart.data.datasets.forEach((ds,di)=>{
+      if (chart.isDatasetVisible && !chart.isDatasetVisible(di)) return;
       const meta = chart.getDatasetMeta(di);
       meta.data.forEach((pt,i)=>{
         const v = ds.data[i];
