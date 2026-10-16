@@ -127,8 +127,12 @@
                   <div style="position:relative;height:320px"><canvas id="chartFyrAnual"></canvas></div>
                 </div>
                 <div class="mt-4">
+                  <h6 class="fw-bold mb-2">Comportamiento anual de usuarios por estrato</h6>
+                  <div style="position:relative;height:300px"><canvas id="chartFyrUsuarios"></canvas></div>
+                </div>
+                <div class="mt-4">
                   <h6 class="fw-bold mb-2">Comportamiento anual de usuarios por clasificación</h6>
-                  <div style="position:relative;height:320px"><canvas id="chartFyrUsuarios"></canvas></div>
+                  <div style="position:relative;height:300px"><canvas id="chartFyrUsuariosOtros"></canvas></div>
                 </div>
                 {% endif %}
                 <div class="small text-muted mt-2">
@@ -865,45 +869,53 @@ if (document.getElementById('chartFyrAnual') && Object.keys(fyrAnual).length){
   });
 }
 
-// Gráfica de líneas: total de usuarios por clasificación mes a mes (solo Villavicencio)
-if (document.getElementById('chartFyrUsuarios')){
-  const CLAS_US = [1,2,3,4,5,6].map(i => 'Estrato ' + i)
-    .concat(['Comercial', 'Oficial', 'Industrial', 'Otros']);
+// Gráficas de líneas: total de usuarios mes a mes (solo Villavicencio)
+// Una para estratos 1-6 y otra para Comercial/Oficial/Industrial/Otros
+if (document.getElementById('chartFyrUsuarios') || document.getElementById('chartFyrUsuariosOtros')){
   const CLAS_US_KEY = k => k.startsWith('Estrato ')
     ? 'Residencial – Estrato ' + k.split(' ')[1] : k;
-  // Colores diferenciados por línea (una por clasificación)
-  const COL_US = ['#BFBA6B','#D9CF43','#50C878','#A93226','#4A6FA5','#B07AA1',
-                  '#E2DF2B','#1E7A1E','#6C757D','#2C3E50'];
-  const nombresUs = ['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octiembre','Noviembre','Diciembre'];
+  const nombresUs = ['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
   const usuariosMes = (clave) => nombresUs.map((_, i) => {
     const d = mesesYear[String(i + 1)];
     if (!d || !d.fyr) return null;
     const v = d.fyr[clave];
     return v && v.n != null ? v.n : null;
   });
-  const hayDatos = CLAS_US.some(k => usuariosMes(CLAS_US_KEY(k)).some(v => v != null));
-  if (hayDatos){
-    new Chart(document.getElementById('chartFyrUsuarios'),{
-      type:'line',
-      data:{
+  const coloresPorChart = [
+    ['#BFBA6B','#D9CF43','#50C878','#A93226','#4A6FA5','#B07AA1'],
+    ['#E2DF2B','#1E7A1E','#6C757D','#2C3E50']
+  ];
+  const grupos = [
+    { id: 'chartFyrUsuarios',       clas: [1,2,3,4,5,6].map(i => 'Estrato ' + i) },
+    { id: 'chartFyrUsuariosOtros',  clas: ['Comercial', 'Oficial', 'Industrial', 'Otros'] }
+  ];
+  grupos.forEach((g, gi) => {
+    const canvas = document.getElementById(g.id);
+    if (!canvas) return;
+    const hayDatos = g.clas.some(k => usuariosMes(CLAS_US_KEY(k)).some(v => v != null));
+    if (!hayDatos) return;
+    new Chart(canvas, {
+      type: 'line',
+      data: {
         labels: nombresUs,
-        datasets: CLAS_US.map((k, i) => ({
+        datasets: g.clas.map((k, i) => ({
           label: k,
           data: usuariosMes(CLAS_US_KEY(k)),
-          borderColor: COL_US[i],
-          backgroundColor: COL_US[i],
+          borderColor: coloresPorChart[gi][i],
+          backgroundColor: coloresPorChart[gi][i],
           fill: false, tension: 0.3, spanGaps: true, pointRadius: 3
         }))
       },
-      options:{responsive:true, maintainAspectRatio:false, plugins:{
-        legend:{position:'top', onClick:alternarPorcion},
-        tooltip:{callbacks:{label:(c)=>' '+c.dataset.label+': '+fmtN(c.parsed.y)+' usuarios'}}
-      }, scales:{
-        y:{ticks:{callback:(v)=>fmtN(v)}}
+      options: { responsive: true, maintainAspectRatio: false, plugins: {
+        legend: { position: 'top', onClick: alternarPorcion },
+        tooltip: { callbacks: { label: (c) => ' ' + c.dataset.label + ': ' + fmtN(c.parsed.y) + ' usuarios' } }
+      }, scales: {
+        y: { ticks: { callback: (v) => fmtN(v) } }
       }},
-      plugins:[tachaLeyenda, Object.assign({}, valoresPuntos, {opts:{fmt:fmtN}})]
+      plugins: [tachaLeyenda, Object.assign({}, valoresPuntos, {opts: {fmt: fmtN}})]
     });
-  }
+  });
+}
 }
 {% endif %}
 
