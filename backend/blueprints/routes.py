@@ -1,5 +1,6 @@
 
 import os
+import uuid
 from datetime import datetime as _dt
 
 import pandas as pd
@@ -71,7 +72,7 @@ def _archivo_muy_grande(e):
 
 # Procesa el archivo único exógeno de EMSA (Villavicencio): lo divide en
 # facturación/recaudo, genera solo el informe general y lo guarda
-def _finalizar_carga_emsa(exogena_path):
+def _finalizar_carga_emsa(exogena_path, anio=None, mes=None, token=None):
     global CARGADO
     is_ajax = request.headers.get("X-Requested-With") == "XMLHttpRequest"
     from core.emsa import (leer_exogena_emisa, MUNICIPIO, COMERCIALIZADORA,
@@ -79,12 +80,30 @@ def _finalizar_carga_emsa(exogena_path):
 
     try:
         fact, rec, periodo_auto = leer_exogena_emisa(exogena_path)
-        anio = periodo_auto[0] if periodo_auto else None
-        mes = periodo_auto[1] if periodo_auto else None
+        # Si no se pasaron anio/mes (formulario), se usa la detección automática
+        if anio is None and periodo_auto:
+            anio = periodo_auto[0]
+        if mes is None and periodo_auto:
+            mes = periodo_auto[1]
         if not anio or not mes:
-            flash("No se pudo determinar el periodo del archivo exógeno.", "danger")
-            dest = url_for("main.index")
-            return jsonify({"redirect": dest}) if is_ajax else redirect(dest)
+            # Se guarda el pendiente y se muestra el formulario para que
+            # el usuario ingrese el año y mes manualmente
+            token = uuid.uuid4().hex
+            set_pendiente(token, {
+                "fact_path": os.path.abspath(exogena_path),
+                "rec_path": os.path.abspath(exogena_path),
+                "headers_f": [], "headers_r": [],
+                "map_f": {}, "map_r": {},
+                "municipio": MUNICIPIO,
+                "comercializadora": COMERCIALIZADORA,
+                "anio": None,
+                "mes": None,
+                "es_emsa": True,
+                "hay_fecha": True,
+                "faltantes": ["anio", "mes"],
+            })
+            flash("No se pudo detectar el período del archivo exógeno. Ingrese el año y mes manualmente.", "warning")
+            return redirect(url_for("main.completar_metadatos", t=token))
         general_data = build_general(fact, rec, None, None, sin_depurar=True)
         m_obj = get_or_create_municipio(MUNICIPIO)
         c_obj = get_or_create_comerc(m_obj.id, COMERCIALIZADORA)
@@ -593,37 +612,39 @@ def procesar_metadatos(t):
     map_r = dict(p.get("map_r", {}))
     headers_f = p.get("headers_f", [])
     headers_r = p.get("headers_r", [])
+    es_emsa = p.get("es_emsa", False)
 
     # Para cada columna que faltaba, se guarda cuál eligió el usuario. Se
     # recorren TODAS las claves (no solo las que faltaban en la ronda anterior):
     # si una columna se reasigna, la clave que la tenía antes queda sin mapeo
     # y hay que volver a pedirla, no dar por bueno el mapa viejo
-    for clave in FACT_CLAVES:
-        sel = request.form.get(f"col_fact_{clave}")
-        if sel and sel in headers_f:
-            map_f[sel] = clave
-            _guardar_alias_columna(clave, sel)
-    for clave in REC_CLAVES:
-        sel = request.form.get(f"col_rec_{clave}")
-        if sel and sel in headers_r:
-            map_r[sel] = clave
-            _guardar_alias_columna(clave, sel)
+    if not es_emsa:
+        for clave in FACT_CLAVES:
+            sel = request.form.get(f"col_fact_{clave}")
+            if sel and sel in headers_f:
+                map_f[sel] = clave
+                _guardar_alias_columna(clave, sel)
+        for clave in REC_CLAVES:
+            sel = request.form.get(f"col_rec_{clave}")
+            if sel and sel in headers_r:
+                map_r[sel] = clave
+                _guardar_alias_columna(clave, sel)
 
-    fec_col = request.form.get("fecha_col")
-    if fec_col and fec_col != "__ninguna__":
-        if fec_col in headers_f:
-            map_f[fec_col] = "fecha_generacion"
-        elif fec_col in headers_r:
-            map_r[fec_col] = "fecha_generacion"
-        _guardar_alias_columna("fecha", fec_col)
+        fec_col = request.form.get("fecha_col")
+        if fec_col and fec_col != "__ninguna__":
+            if fec_col in headers_f:
+                map_f[fec_col] = "fecha_generacion"
+            elif fec_col in headers_r:
+                map_r[fec_col] = "fecha_generacion"
+            _guardar_alias_columna("fecha", fec_col)
 
-    mun_col = request.form.get("municipio_col")
-    if mun_col and mun_col != "__manual__":
-        if mun_col in headers_f:
-            map_f[mun_col] = "municipio"
-        elif mun_col in headers_r:
-            map_r[mun_col] = "municipio"
-        _guardar_alias_columna("municipio", mun_col)
+        mun_col = request.form.get("municipio_col")
+        if mun_col and mun_col != "__manual__":
+            if mun_col in headers_f:
+                map_f[mun_col] = "municipio"
+            elif mun_col in headers_r:
+                map_r[mun_col] = "municipio"
+            _guardar_alias_columna("municipio", mun_col)
 
     # Se toman los datos escritos a mano (o los que ya se habían detectado)
     municipio = (request.form.get("municipio") or "").strip() or p.get("municipio")
@@ -659,8 +680,8 @@ def procesar_metadatos(t):
     # Se revisa qué sigue faltando. Se compara contra TODAS las claves, no
     # contra la lista guardada: si una columna se reasignó, la clave anterior
     # quedó sin mapeo y debe volver a pedirse
-    falt_f = [c for c in FACT_CLAVES if c not in map_f.values()]
-    falt_r = [c for c in REC_CLAVES if c not in map_r.values()]
+    falt_f = [] if es_emsa else [c for c in FACT_CLAVES if c not in map_f.values()]
+    falt_r = [] if es_emsa else [c for c in REC_CLAVES if c not in map_r.values()]
 
     faltantes = []
     if falt_f or falt_r:
@@ -690,6 +711,10 @@ def procesar_metadatos(t):
         return render_template("metadatos.html", t=t, p=nv, municipios=municipios,
                                comercializadoras=comercializadoras,
                                MESES=MESES, ETIQUETAS=ETIQUETAS_CLAVE, EJEMPLOS=EJEMPLOS_CLAVE)
+
+    # Si es EMSA, se llama al flujo específico que divide el exógeno
+    if es_emsa:
+        return _finalizar_carga_emsa(p["fact_path"], anio=anio, mes=mes, token=t)
 
     # Si ya está todo, se termina de procesar; el pendiente se borra
     # solo cuando el informe queda guardado (token)
