@@ -123,7 +123,7 @@
                 </div>
                 {% if es_villavo %}
                 <div class="mt-4">
-                  <h6 class="fw-bold mb-2">Facturación y recaudo por estrato y clasificación ({{ anio }})</h6>
+                  <h6 class="fw-bold mb-2">Facturación y recaudo por estrato y clasificación</h6>
                   <div style="position:relative;height:320px"><canvas id="chartFyrAnual"></canvas></div>
                 </div>
                 <div class="mt-4">
@@ -776,8 +776,15 @@ const rotuloBarras = {
         ctx.font = 'bold 10px sans-serif';
         ctx.fillStyle = '#1a1a18';
         ctx.textAlign = 'center';
-        const altoBarra = Math.abs(pt.base - pt.y);
         const texto = fmt(v);
+        // Opción arriba: valor horizontal sobre la barra (sobre la línea $0)
+        if (opts.arriba) {
+          ctx.textBaseline = 'bottom';
+          ctx.fillText(texto, pt.x, Math.min(pt.y, pt.base) - 3);
+          ctx.restore();
+          return;
+        }
+        const altoBarra = Math.abs(pt.base - pt.y);
         // Si la barra es muy corta para el texto rotado, se pone vertical encima
         if (altoBarra < ctx.measureText(texto).width + 4) {
           ctx.translate(pt.x, Math.min(pt.y, pt.base) - 4);
@@ -847,7 +854,7 @@ if (document.getElementById('chartFyrAnual') && Object.keys(fyrAnual).length){
       plugins:{
         legend:{position:'top', onClick:alternarPorcion},
         tooltip:{callbacks:{label:(c)=>' '+c.dataset.label+': '+fmtFull(c.parsed.y)}},
-        rotuloBarras:{fmt:fmtCorto}
+        rotuloBarras:{fmt:fmtCorto, arriba:true}
       },
       scales:{y:{ticks:{callback:(v)=>fmtCorto(v)}}}
     },
