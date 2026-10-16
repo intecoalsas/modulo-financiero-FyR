@@ -726,7 +726,8 @@ const tachaLeyenda = {
 
 const valoresPuntos = {
   id:'valoresPuntos',
-  afterDatasetsDraw(chart){
+  afterDatasetsDraw(chart, args, opts){
+    const fmt = (opts && opts.fmt) || fmtCorto;
     const {ctx} = chart;
     ctx.font = '8px sans-serif';
     const dibujados = [];
@@ -739,7 +740,7 @@ const valoresPuntos = {
       meta.data.forEach((pt, i) => {
         const v = ds.data[i];
         if (v == null || isNaN(Number(v))) return;
-        const txt = fmtCorto(v);
+        const txt = fmt(v);
         const w = ctx.measureText(txt).width, h = 9;
         // Primero encima del punto; si choca, debajo; si aún choca, se omite
         const opciones = [
@@ -900,7 +901,7 @@ if (document.getElementById('chartFyrUsuarios')){
       }, scales:{
         y:{ticks:{callback:(v)=>fmtN(v)}}
       }},
-      plugins:[tachaLeyenda, valoresPuntos]
+      plugins:[tachaLeyenda, Object.assign({}, valoresPuntos, {opts:{fmt:fmtN}})]
     });
   }
 }
