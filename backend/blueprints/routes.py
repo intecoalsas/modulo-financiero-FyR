@@ -130,7 +130,7 @@ def _finalizar_carga_emsa(exogena_path):
 # Después de tener todos los datos (municipio, año, mes, columnas), arma los
 # informes, los guarda en la base de datos y manda al usuario a la página General
 def _finalizar_carga(municipio, comercializadora, anio, mes, fact_path, rec_path,
-                     mapping_fact=None, mapping_rec=None):
+                     mapping_fact=None, mapping_rec=None, token=None):
     global CARGADO
     is_ajax = request.headers.get("X-Requested-With") == "XMLHttpRequest"
 
@@ -167,6 +167,10 @@ def _finalizar_carga(municipio, comercializadora, anio, mes, fact_path, rec_path
         flash(f"Error al guardar en BD: {exc}", "danger")
         dest = url_for("main.index")
         return jsonify({"redirect": dest}) if is_ajax else redirect(dest)
+
+    # El informe quedó guardado: ya se puede olvidar la sesión de carga
+    if token:
+        del_pendiente(token)
 
     try:
         # Se guardan los datos en el análisis general de la comercializadora,
@@ -684,10 +688,10 @@ def procesar_metadatos(t):
                                comercializadoras=comercializadoras,
                                MESES=MESES, ETIQUETAS=ETIQUETAS_CLAVE, EJEMPLOS=EJEMPLOS_CLAVE)
 
-    # Si ya está todo, se borra la sesión pendiente y se termina de procesar
-    del_pendiente(t)
+    # Si ya está todo, se termina de procesar; el pendiente se borra
+    # solo cuando el informe queda guardado (token)
     return _finalizar_carga(municipio, comercializadora, anio, mes,
-                            p["fact_path"], p["rec_path"], map_f, map_r)
+                            p["fact_path"], p["rec_path"], map_f, map_r, token=t)
 
 
 # Muestra el historial de reportes guardados, con filtros opcionales
