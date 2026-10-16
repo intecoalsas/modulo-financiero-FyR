@@ -22,8 +22,9 @@ from core.core import (build_general, build_especiales,
                        get_cartera, carteras_anios, save_cartera,
                        get_or_create_municipio, get_or_create_comerc,
                        cargar_cartera_desde_referencia, actualizar_cartera_mes,
-                       ensure_cartera_anio,
+                       ensure_cartera_anio, agregar_fyr_anual,
                        exportar_general, exportar_especiales)
+from core.fyr import fyr_agregar, fyr_totales
 from services.pendientes import get_pendiente, set_pendiente, del_pendiente
 from services.report_service import get_municipios, get_comercializadoras, get_all_reports
 
@@ -98,6 +99,8 @@ def _finalizar_carga_emsa(exogena_path):
             consumo=general_data["f"]["total_consumo"],
             facturacion=general_data["f"]["total_imp"],
             recaudo=general_data["r"]["total_valor"],
+            fyr_data=fyr_totales(fyr_agregar(
+                general_data.get("facturacion"), general_data.get("recaudo"))),
         )
         if str(anio) not in (c_obj.tarifas or {}):
             guardar_tarifas(c_obj, anio, TARIFAS_LCEE_2026)
@@ -895,6 +898,14 @@ def _render_informacion_referencia(comercializadora=None, anio=None, tanio=None)
     desc_grupos = (get_descripcion(comercializadora).get("grupos")
                    or (info_ref or {}).get("descripcion", {}).get("grupos"))
 
+    # Para Villavicencio/EMSA se arma el acumulado anual del desglose FYR
+    # (facturación, recaudo, consumo por estrato y clasificación) para la
+    # gráfica de "Comportamiento por clasificación de usuarios"
+    municipio_nombre = (comercializadora.municipio.nombre
+                        if comercializadora.municipio else "")
+    es_villavo = municipio_nombre.strip().lower() == "villavicencio"
+    fyr_anual = agregar_fyr_anual(comercializadora.analisis_general, anio) if es_villavo and anio else None
+
     return render_template(
         "informacion_referencia.html",
         com=comercializadora,
@@ -907,7 +918,9 @@ def _render_informacion_referencia(comercializadora=None, anio=None, tanio=None)
         tarifas_anios=tarifas_anios_list,
         tarifas_year=tarifas_year,
         desc_grupos=desc_grupos,
-        municipio=comercializadora.municipio.nombre if comercializadora.municipio else "",
+        municipio=municipio_nombre,
+        es_villavo=es_villavo,
+        fyr_anual=fyr_anual,
     )
 
 

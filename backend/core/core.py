@@ -802,22 +802,48 @@ def get_analisis_general_folders(comercializadora):
 
 
 # Guarda o actualiza el consumo, facturación y recaudo de un mes/año
-# en el análisis general de la comercializadora
+# en el análisis general de la comercializadora. Para Villavicencio/EMSA
+# también se guarda el desglose FYR del mes (fact/rec/base/kwh por
+# clasificación y estrato) para poder graficar el acumulado anual.
 def upsert_analisis_general(comercializadora, anio, mes, consumo, facturacion, recaudo,
-                             commit=True):
+                            fyr_data=None, commit=True):
     if not comercializadora or not anio or not mes:
         return
     folders = dict(comercializadora.analisis_general or {})
     year = dict(folders.get(str(anio), {}) or {})
-    year[str(mes)] = {
+    mes_data = {
         "consumo": consumo or 0,
         "facturacion": facturacion or 0,
         "recaudo": recaudo or 0,
     }
+    if fyr_data:
+        mes_data["fyr"] = fyr_data
+    year[str(mes)] = mes_data
     folders[str(anio)] = year
     comercializadora.analisis_general = folders
     if commit:
         db.session.commit()
+
+
+# Suma el desglose FYR de todos los meses cargados de un año
+# (solo Villavicencio/EMSA guardan fyr por mes). Devuelve
+# {"Residencial – Estrato 1": {"fact": x, "rec": y, "base": z, "kwh": w}, ...}
+def agregar_fyr_anual(analisis_general, anio):
+    year = (analisis_general or {}).get(str(anio), {}) or {}
+    acum = {}
+    for mes_data in year.values():
+        fyr_mes = (mes_data or {}).get("fyr") or {}
+        for clave, vals in fyr_mes.items():
+            if not isinstance(vals, dict):
+                continue
+            a = acum.setdefault(clave, {"fact": 0.0, "rec": 0.0,
+                                        "base": 0.0, "kwh": 0.0, "n": 0})
+            a["fact"] += vals.get("fact") or 0
+            a["rec"] += vals.get("rec") or 0
+            a["base"] += vals.get("base") or 0
+            a["kwh"] += vals.get("kwh") or 0
+            a["n"] += vals.get("n") or 0
+    return acum
 
 
 # Crea una carpeta (año) vacía en el análisis general si no existe

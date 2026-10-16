@@ -121,6 +121,12 @@
                 <div class="mt-3">
                   <div style="position:relative;height:280px"><canvas id="chartAnGral"></canvas></div>
                 </div>
+                {% if es_villavo %}
+                <div class="mt-4">
+                  <h6 class="fw-bold mb-2">Comportamiento por clasificación de usuarios (acumulado {{ anio }})</h6>
+                  <div style="position:relative;height:320px"><canvas id="chartFyrAnual"></canvas></div>
+                </div>
+                {% endif %}
                 <div class="small text-muted mt-2">
                   <i class="bi bi-info-circle"></i>
                   La información se agrega automáticamente cada mes cuando se carga y genera un informe en
@@ -798,6 +804,42 @@ if (document.getElementById('chartAnGral')){
     plugins:[tachaLeyenda, valoresPuntos]
   });
 }
+
+// Gráfica de barras: acumulado anual por clasificación (solo Villavicencio)
+{% if es_villavo %}
+const fyrAnual = {{ (fyr_anual or {})|tojson }};
+if (document.getElementById('chartFyrAnual') && Object.keys(fyrAnual).length){
+  // Mismas etiquetas que la página General de EMSA
+  const CLAS_ESTR = [1,2,3,4,5,6].map(i => 'Estrato ' + i)
+    .concat(['Comercial', 'Oficial', 'Industrial', 'Otros']);
+  const CLAS_KEY = k => k.startsWith('Estrato ')
+    ? 'Residencial – Estrato ' + k.split(' ')[1] : k;
+  // base = valor consumo ($), fact = facturación ($), rec = recaudo ($)
+  const dCons = CLAS_ESTR.map(k => (fyrAnual[CLAS_KEY(k)] || {}).base || 0);
+  const dFact = CLAS_ESTR.map(k => (fyrAnual[CLAS_KEY(k)] || {}).fact || 0);
+  const dRec  = CLAS_ESTR.map(k => (fyrAnual[CLAS_KEY(k)] || {}).rec  || 0);
+  new Chart(document.getElementById('chartFyrAnual'),{
+    type:'bar',
+    data:{
+      labels: CLAS_ESTR,
+      datasets:[
+        {label:'Consumo', data:dCons, backgroundColor:'#BFBA6B'},
+        {label:'Facturación', data:dFact, backgroundColor:'#D9CF43'},
+        {label:'Recaudo', data:dRec, backgroundColor:'#50C878'}
+      ]
+    },
+    options:{responsive:true, maintainAspectRatio:false,
+      plugins:{
+        legend:{position:'top', onClick:alternarPorcion},
+        tooltip:{callbacks:{label:(c)=>' '+c.dataset.label+': '+fmtFull(c.parsed.y)}},
+        rotuloBarras:{fmt:fmtCorto}
+      },
+      scales:{y:{ticks:{callback:(v)=>fmtCorto(v)}}}
+    },
+    plugins:[tachaLeyenda, rotuloBarras]
+  });
+}
+{% endif %}
 
 // ================= Editor de tarifas =================
 const edCom = {{ com.id }};

@@ -79,3 +79,21 @@ def fyr_agregar(facturacion, recaudo):
         otros[m] = [cu, cr, cu + cr]
     res["Otros"] = otros
     return res
+
+
+# De un dict de fyr_agregar se quedan solo los totales (índice 2) por
+# clave, en la forma plana que se guarda en analisis_general:
+# {"Residencial – Estrato 1": {"fact": x, "rec": y, "base": z, "kwh": w, "n": c}}
+def fyr_totales(fyr):
+    out = {}
+    for k, v in (fyr or {}).items():
+        if not isinstance(v, dict) or "fact" not in v:
+            continue
+        out[k] = {
+            "fact": v["fact"][2],
+            "rec": v["rec"][2],
+            "base": v["base"][2],
+            "kwh": v["kwh"][2],
+            "n": v["n"][2],
+        }
+    return out
