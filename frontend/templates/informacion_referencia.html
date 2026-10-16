@@ -769,13 +769,21 @@ const rotuloBarras = {
         const v = ds.data[i];
         if (v == null || isNaN(Number(v))) return;
         ctx.save();
-        ctx.translate(pt.x, pt.y + (pt.base - pt.y) / 2);
-        ctx.rotate(-Math.PI / 2);
         ctx.font = 'bold 10px sans-serif';
         ctx.fillStyle = '#1a1a18';
         ctx.textAlign = 'center';
-        ctx.textBaseline = 'middle';
-        ctx.fillText(fmt(v), 0, 0);
+        const altoBarra = Math.abs(pt.base - pt.y);
+        const texto = fmt(v);
+        // Si la barra es muy corta para el texto rotado, se pone encima
+        if (altoBarra < ctx.measureText(texto).width + 4) {
+          ctx.textBaseline = 'bottom';
+          ctx.fillText(texto, pt.x, Math.min(pt.y, pt.base) - 3);
+        } else {
+          ctx.translate(pt.x, pt.y + (pt.base - pt.y) / 2);
+          ctx.rotate(-Math.PI / 2);
+          ctx.textBaseline = 'middle';
+          ctx.fillText(texto, 0, 0);
+        }
         ctx.restore();
       });
     });
