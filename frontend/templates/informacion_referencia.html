@@ -778,10 +778,12 @@ const rotuloBarras = {
         ctx.textAlign = 'center';
         const altoBarra = Math.abs(pt.base - pt.y);
         const texto = fmt(v);
-        // Si la barra es muy corta para el texto rotado, se pone encima
+        // Si la barra es muy corta para el texto rotado, se pone vertical encima
         if (altoBarra < ctx.measureText(texto).width + 4) {
+          ctx.translate(pt.x, Math.min(pt.y, pt.base) - 4);
+          ctx.rotate(-Math.PI / 2);
           ctx.textBaseline = 'bottom';
-          ctx.fillText(texto, pt.x, Math.min(pt.y, pt.base) - 3);
+          ctx.fillText(texto, 0, 0);
         } else {
           ctx.translate(pt.x, pt.y + (pt.base - pt.y) / 2);
           ctx.rotate(-Math.PI / 2);
