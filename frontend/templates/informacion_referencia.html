@@ -123,11 +123,11 @@
                 </div>
                 {% if es_villavo %}
                 <div class="mt-4">
-                  <h6 class="fw-bold mb-2">Comportamiento por clasificación de usuarios (acumulado {{ anio }})</h6>
+                  <h6 class="fw-bold mb-2">Facturación y recaudo por estrato y clasificación ({{ anio }})</h6>
                   <div style="position:relative;height:320px"><canvas id="chartFyrAnual"></canvas></div>
                 </div>
                 <div class="mt-4">
-                  <h6 class="fw-bold mb-2">Comportamiento anual de usuarios por clasificación ({{ anio }})</h6>
+                  <h6 class="fw-bold mb-2">Comportamiento anual de usuarios por clasificación</h6>
                   <div style="position:relative;height:320px"><canvas id="chartFyrUsuarios"></canvas></div>
                 </div>
                 {% endif %}
@@ -887,7 +887,7 @@ if (document.getElementById('chartFyrUsuarios')){
       },
       options:{responsive:true, maintainAspectRatio:false, plugins:{
         legend:{position:'top', onClick:alternarPorcion},
-        tooltip:{callbacks:{label:(c)=>' '+c.dataset.label+': '+fmtN(c.parsed.y)}}
+        tooltip:{callbacks:{label:(c)=>' '+c.dataset.label+': '+fmtN(c.parsed.y)+' usuarios'}}
       }, scales:{
         y:{ticks:{callback:(v)=>fmtN(v)}}
       }},
