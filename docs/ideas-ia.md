@@ -1,0 +1,144 @@
+# Ideas de IA para el Sistema de Informes F&R
+
+> **Cómo usar este documento**
+> Este archivo es la **cola de pendientes de IA**. Cada idea se implementa
+> **una por una**, y al terminar se **elimina de este archivo** (y se anota
+> en el historial al final). Si el chat cambia o la sesión se pierde, basta
+> con leer este documento para saber qué queda pendiente y cómo implementarlo.
+>
+> Regla: **no borrar ideas sin implementar**; solo moverlas a "Historial"
+> cuando estén terminadas.
+
+---
+
+## Decisión técnica (aplicar a TODAS las ideas)
+
+- **Proveedor**: Google Gemini (tier gratis, sin tarjeta) — `gemini-2.0-flash`.
+  - Alternativa si el tier gratis cambia: **Groq** (`openai/gpt-oss-120b`),
+    mismo esquema de código, solo cambia la URL y la key.
+  - Otra alternativa: OpenRouter con modelos `:free`.
+- **Key**: se guarda en `backend/.env` como `GEMINI_API_KEY=...`
+  (archivo en `.gitignore`; **nunca** subir la key a GitHub).
+- **Cliente HTTP**: `google-genai` (SDK oficial) o `requests` directo.
+- **Prompt base** (común a todas):
+  > "Eres analista senior de interventoría de alumbrado público en Colombia.
+  >  Responde en español formal, con cifras exactas tomadas SOLO de los datos
+  >  entregados. NO inventes ni recalcules números. No uses emojis."
+- **Límites gratis (oct 2026)**: Gemini ~15 req/min y ~1M tokens/día.
+  Sobra para un solo usuario. Groq: 30 req/min, 1.000 req/día.
+- **Privacidad**: solo enviar **totales, porcentajes y KPIs precalculados**
+  por la app. **NUNCA** enviar las ~235.000 filas de detalle de cuentas.
+- **Mitigación de alucinaciones**: la app arma el prompt con cifras ya
+  calculadas por Python; a la IA se le prohíbe hacer cálculos propios.
+- **Si la API falla**: mostrar mensaje amable ("IA no disponible, intente
+  más tarde"), jamás romper la página.
+
+---
+
+## Cola de pendientes (implementar en este orden sugerido)
+
+### 1. Análisis IA del informe
+- **Dónde**: botón "Analizar con IA" en `general.html` (informe general).
+- **Flujo**: clic → `POST /api/analisis-ia` → la app recoge KPIs ya
+  calculados (facturación, recaudo, diferencia, IAP facturado/no percibido,
+  tabla por estrato 1-6, clasificación Comercial/Oficial/Industrial/Otros,
+  usuarios por estrato, variación % vs mes anterior) → prompt → Gemini →
+  texto → tarjeta nueva en el informe.
+- **Salida esperada**: 4 bloques: *Resumen ejecutivo / Hallazgos /
+  Alertas / Recomendaciones*.
+- **Esfuerzo**: ~45 min.
+- **Extras opcionales**: botón "Incluir en Word" para que el análisis entre
+  al documento generado.
+
+### 2. Detección automática de anomalías y alertas
+- **Dónde**: tarjeta "Alertas" visible al abrir el informe (sin clic extra,
+  o bajo demanda).
+- **Reglas base** (calcular en Python, la IA solo redacta):
+  - Estrato con caída de recaudo >10% con facturación estable.
+  - Cuentas con facturación $0 en meses consecutivos.
+  - Sobrepagos (recaudo > facturado).
+  - Saltos de consumo >500% vs mes anterior.
+  - Cuentas duplicadas, consumos negativos.
+- **Esfuerzo**: ~1 hora.
+
+### 3. Chat con los datos ("Pregúntale a la IA")
+- **Dónde**: barra de chat flotante en informe general / información de
+  referencia.
+- **Capacidades**: preguntas tipo *"¿Cuánto se recaudó en Villavicencio en
+  el último semestre?"*, *"¿Qué estrato debe más?"*, *"Compárame abril vs
+  junio"*.
+- **Implementación**: la app arma un **contexto con los agregados** (tablas
+  resumidas por mes/estrato/clasificación) y la IA responde sobre eso.
+  Si necesita datos que no están en el contexto, responde "no tengo ese dato".
+- **Esfuerzo**: ~2-3 horas.
+- **Riesgo**: que el usuario pida datos de meses sin detalle guardado →
+  el contexto solo llevará resúmenes (que sí se conservan siempre).
+
+### 4. Conclusiones automáticas en el Word
+- **Dónde**: al generar `descargar_word` del informe general.
+- **Flujo**: mismo prompt base + KPIs → párrafo de **conclusiones y
+  recomendaciones** en lenguaje formal de interventoría → se inserta en el
+  documento (sección final).
+- **Esfuerzo**: ~1 hora.
+
+### 5. Explicación de cifras en lenguaje llano (ayuda en KPIs)
+- **Dónde**: ícono "?" junto a cada tarjeta KPI (facturación, recaudo,
+  diferencia, IAP).
+- **Flujo**: clic → prompt corto con la cifra y su contexto → la IA explica
+  (ej. *"de cada $100 facturados, $95 se recaudaron"*).
+- **Mejora posible**: pre-generar los textos una sola vez y **cachearlos**
+  (no repetir la llamada en cada visita).
+- **Esfuerzo**: ~45 min.
+
+### 6. Proyección y metas de recaudo
+- **Dónde**: sección de comportamiento anual (información de referencia).
+- **Contenido**: proyección al cierre del año con el ritmo actual
+  (*"al ritmo actual, el estrato 4 alcanzará $X en diciembre"*), avance
+  contra meta anual si existe.
+- **Cálculo**: la proyección se calcula en Python (regresión simple);
+  la IA solo la redacta.
+- **Esfuerzo**: ~1.5 horas.
+
+### 7. Auditoría asistida de calidad de datos
+- **Dónde**: después de subir un archivo, antes de confirmar la carga, o
+  sección aparte de auditoría.
+- **Chequeos en Python**:
+  - Filas con consumos negativos o nulos.
+  - Duplicados (mismo id_cliente en el mismo período).
+  - Saltos >500% de un mes a otro.
+  - Fechas fuera del período declarado.
+  - Totales que no cuadran entre facturación y recaudo.
+- **IA**: redacta el veredicto ("la base está en buen estado" / "corrija
+  estos puntos").
+- **Esfuerzo**: ~1.5 horas.
+
+### 8. Ayuda en errores de carga de archivos
+- **Dónde**: cuando falla o sale "pendiente" una carga (mensaje de error
+  de columnas, formato, tamaño).
+- **Flujo**: la app envía el mensaje técnico + columnas encontradas/faltantes
+  → la IA explica **en español llano** qué tiene mal el archivo y cómo
+  corregirlo.
+- **Esfuerzo**: ~45 min.
+
+### 9. Comparador de municipios y ranking
+- **Dónde**: página o tarjeta que compare los 5 municipios.
+- **Contenido**: ranking de facturación/recaudo, municipio que empeoró más,
+  comparación de IAP.
+- **IA**: solo redacta el "quién empeoró y por qué probablemente".
+- **Esfuerzo**: ~1.5 horas.
+
+### 10. Búsqueda semántica histórica
+- **Dónde**: buscador general del sistema.
+- **Capacidad**: entender frases como *"meses donde el recaudo fue peor que
+  la facturación en más de 10%"* → la app traduce la intención a consulta
+  sobre los resúmenes históricos (que se conservan siempre) y devuelve
+  resultados.
+- **Esfuerzo**: ~2 horas.
+
+---
+
+## Historial de ideas implementadas
+
+*(Aquí se va moviendo cada idea al terminarla, con fecha y commit.)*
+
+- _(vacío por ahora)_
