@@ -442,6 +442,34 @@ def api_valores(report_id=None):
                     "total": len(conteo)})
 
 
+# Análisis con IA del informe general (Gemini tier gratis). Envía solo
+# totales ya calculados; nunca las filas detalle de cuentas.
+@bp.route("/api/analisis-ia", methods=["POST"])
+@limiter.limit("10 per minute")
+def analisis_ia():
+    from core.ia_analisis import armar_contexto, generar_analisis
+    body = request.get_json(silent=True) or {}
+    report_id = body.get("report_id")
+    if report_id:
+        report = Report.query.get_or_404(report_id)
+    else:
+        report = Report.query.order_by(Report.updated_at.desc()).first()
+    if report is None or report.general_data is None:
+        return jsonify({"error": "No hay informe cargado."}), 404
+    es_emsa, fyr, fyr_orden = _contexto_fyr(
+        report.municipio_nombre, report.comercializadora_nombre,
+        report.general_data)
+    try:
+        contexto = armar_contexto(report, fyr=fyr, fyr_orden=fyr_orden)
+        texto, modelo = generar_analisis(contexto)
+    except RuntimeError as exc:
+        return jsonify({"error": str(exc)}), 503
+    except Exception as exc:  # la IA no debe romper la página
+        return jsonify({"error": f"No fue posible generar el análisis: {exc}"}), 502
+    return jsonify({"analisis": texto, "modelo": modelo,
+                    "periodo": f"{report.mes_nombre} {report.anio}"})
+
+
 # Recibe los archivos que se suben desde la página. Normalmente son dos
 # (facturación y recaudo); para Villavicencio/EMSA basta el archivo exógeno.
 @bp.route("/cargar", methods=["POST"])

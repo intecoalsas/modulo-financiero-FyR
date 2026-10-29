@@ -11,6 +11,10 @@
         {% if periodo %}<span class="badge bg-info text-dark ms-2">{{ municipio }} · {{ comercializadora }} · {{ periodo }}</span>{% endif %}
       </h3>
       <div class="d-flex gap-2">
+        <button type="button" class="btn btn-outline-dark" id="btnIa"
+                onclick="analizarIa()">
+          <i class="bi bi-stars"></i> Análisis IA
+        </button>
         {# Excel Profesional deshabilitado temporalmente (rendimiento)
         {% if report_id %}
         <a href="{{ url_for('main.descargar_excel', report_id=report_id) }}" class="btn btn-success">
@@ -67,6 +71,22 @@
             <small>Cartera</small>
           </div>
         </div>
+      </div>
+    </div>
+
+    <!-- Análisis con IA: se llena con el botón "Análisis IA" -->
+    <div class="card border-0 shadow-sm mb-4 d-none" id="cardIa">
+      <div class="card-header bg-dark text-white d-flex justify-content-between align-items-center">
+        <h6 class="mb-0"><i class="bi bi-stars"></i> Análisis con IA</h6>
+        <span class="badge bg-secondary" id="iaPeriodo"></span>
+      </div>
+      <div class="card-body">
+        <div id="iaCargando" class="text-muted small d-none">
+          <span class="spinner-border spinner-border-sm me-2"></span>
+          Analizando el informe… puede tardar hasta 30 segundos.
+        </div>
+        <div id="iaError" class="alert alert-warning py-2 small d-none"></div>
+        <div id="iaTexto" class="small" style="white-space: pre-wrap;"></div>
       </div>
     </div>
 
@@ -901,5 +921,44 @@ const API_VAL = REPORT_ID ? '/api/valores/' + REPORT_ID : '/api/valores';
     }
   });
 })();
+</script>
+
+<script>
+// ---- Análisis con IA (botón "Análisis IA" del encabezado) ----
+async function analizarIa() {
+  const card = document.getElementById('cardIa');
+  const carg = document.getElementById('iaCargando');
+  const err = document.getElementById('iaError');
+  const txt = document.getElementById('iaTexto');
+  const per = document.getElementById('iaPeriodo');
+  const btn = document.getElementById('btnIa');
+  if (!card) return;
+  card.classList.remove('d-none');
+  err.classList.add('d-none');
+  txt.textContent = '';
+  carg.classList.remove('d-none');
+  btn.disabled = true;
+  try {
+    const resp = await fetch('/api/analisis-ia', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({report_id: (typeof REPORT_ID !== 'undefined' ? REPORT_ID : 0)})
+    });
+    const datos = await resp.json().catch(() => ({}));
+    if (!resp.ok || datos.error) {
+      err.textContent = datos.error || 'No fue posible generar el análisis.';
+      err.classList.remove('d-none');
+      return;
+    }
+    txt.textContent = datos.analisis || '';
+    if (datos.periodo) per.textContent = datos.periodo;
+  } catch (e) {
+    err.textContent = 'Sin conexión con el servidor: ' + e.message;
+    err.classList.remove('d-none');
+  } finally {
+    carg.classList.add('d-none');
+    btn.disabled = false;
+  }
+}
 </script>
 {% endblock %}
