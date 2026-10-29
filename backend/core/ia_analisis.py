@@ -274,3 +274,31 @@ def generar_analisis(contexto):
                            "GEMINI_API_KEY=... (ver docs/ideas-ia.md)")
     prompt = f"{_INSTRUCCIONES}\n---\nDATOS DEL INFORME:\n{contexto}"
     return _llamar_gemini(prompt, clave)
+
+
+# Instrucciones para el chat con los datos (idea #3)
+_INSTRUCCIONES_CHAT = (
+    "Eres el analista de datos del Sistema de Informes F&R de interventoría "
+    "de alumbrado público en Colombia.\n"
+    "Respondes en español formal, sin emojis, de forma breve (máximo 150 "
+    "palabras) y con las cifras exactas de los datos entregados.\n"
+    "REGLAS ESTRICTAS:\n"
+    "1. Usa EXCLUSIVAMENTE los datos entregados. NO inventes cifras ni hagas "
+    "cálculos que no se puedan deducir de ellos.\n"
+    "2. Si el dato pedido no está en los datos, responde exactamente: "
+    "'No tengo ese dato disponible. Solo puedo responder con la información "
+    "del período y los meses cargados en el sistema.'\n"
+    "3. Cuando cierres una cifra, usa el signo $ y el formato colombiano.\n"
+    "4. Si te preguntan por meses o municipios que no aparecen, dilo "
+    "claramente en vez de estimar.\n"
+)
+
+
+def llamar_ia(contexto, instrucciones=None):
+    """Llamada genérica a la IA. Devuelve (texto, modelo_usado)."""
+    clave = cargar_clave()
+    if not clave:
+        raise RuntimeError("Falta la API key: cree backend/.env con "
+                           "GEMINI_API_KEY=... (ver docs/ideas-ia.md)")
+    prompt = f"{instrucciones or _INSTRUCCIONES}\n---\nDATOS:\n{contexto}"
+    return _llamar_gemini(prompt, clave)

@@ -18,7 +18,7 @@ SQLITE = "sqlite:///" + os.path.join(BASE, "instance", "informes.db")
 # Orden en que se copian (municipio -> comercializadora -> informes)
 TABLAS = ["municipios", "comercializadoras", "mapeo_columnas",
           "cargas_pendientes", "auditoria", "clientes_especiales", "reports",
-          "alertas_reporte"]
+          "alertas_reporte", "resumen_mes"]
 
 
 def main():

@@ -203,6 +203,35 @@ class AlertaReporte(db.Model):
         return f"<AlertaReporte report={self.report_id}>"
 
 
+# Resumen numérico de cada informe (ideas #3, #6 y #9).
+# Un general_data pesa ~850 MB en RAM, así que el chat y las comparaciones
+# NO pueden leer los informes completos: se guardan aquí solo los totales
+# (pocos bytes por mes) y con eso se responde al instante.
+class ResumenMes(db.Model):
+    __tablename__ = "resumen_mes"
+
+    report_id = db.Column(
+        db.Integer, db.ForeignKey("reports.id", ondelete="CASCADE"),
+        primary_key=True)
+    municipio = db.Column(db.String(120), nullable=True)
+    comercializadora = db.Column(db.String(160), nullable=True)
+    anio = db.Column(db.Integer, nullable=False)
+    mes = db.Column(db.Integer, nullable=False)
+    facturacion = db.Column(db.Float, nullable=True)
+    recaudo = db.Column(db.Float, nullable=True)
+    valor_consumo = db.Column(db.Float, nullable=True)
+    kwh = db.Column(db.Float, nullable=True)
+    cuentas = db.Column(db.Float, nullable=True)
+    # Totales por estrato y clasificación del mes (JSON chico de 10 filas),
+    # para que el chat pueda responder "¿qué estrato debe más?" sin cargar
+    # el informe completo (~850 MB en RAM).
+    por_estrato = db.Column(db.Text, nullable=True)
+    creado = db.Column(db.DateTime, default=ahora_utc)
+
+    def __repr__(self):
+        return f"<ResumenMes {self.municipio} {self.mes}/{self.anio}>"
+
+
 # Registro de auditoría: quién (IP) hizo qué y cuándo (sin login no hay
 # usuario; cuando se agregue autenticación se suma usuario_id)
 class Auditoria(db.Model):

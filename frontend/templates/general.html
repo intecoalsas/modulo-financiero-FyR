@@ -109,6 +109,44 @@
       </div>
     </div>
 
+    <!-- ===== Chat flotante "Pregúntale a la IA" (idea #3) ===== -->
+    <div class="position-fixed bottom-0 end-0 p-3" style="z-index:1035;">
+      <div class="card d-none shadow-lg" id="chatCard"
+           style="width:380px;max-width:92vw;">
+        <div class="card-header bg-dark text-white d-flex justify-content-between align-items-center py-2">
+          <h6 class="mb-0"><i class="bi bi-chat-dots"></i> Pregúntale a la IA</h6>
+          <button type="button" class="btn-close btn-close-white"
+                  onclick="cerrarChat()" aria-label="Cerrar"></button>
+        </div>
+        <div class="card-body p-2" style="height:300px;overflow-y:auto;"
+             id="chatMensajes">
+          <div class="small text-muted">
+            Pregunte, por ejemplo:<br>
+            • ¿Qué municipio recaudó más?<br>
+            • ¿Qué estrato debe más?<br>
+            • Compáreme junio contra julio.
+          </div>
+        </div>
+        <div class="card-footer p-2">
+          <div id="chatPensando" class="small text-muted d-none mb-1">
+            <span class="spinner-border spinner-border-sm me-1"></span> Pensando…
+          </div>
+          <div class="input-group input-group-sm">
+            <input type="text" id="chatInput" class="form-control"
+                   placeholder="Escriba su pregunta…"
+                   onkeydown="if(event.key==='Enter') enviarChat()">
+            <button class="btn btn-dark" type="button"
+                    onclick="enviarChat()">Enviar</button>
+          </div>
+        </div>
+      </div>
+      <button type="button" class="btn btn-dark rounded-circle shadow"
+              id="chatBtn" onclick="abrirChat()" title="Preguntar a la IA"
+              style="width:56px;height:56px;">
+        <i class="bi bi-stars fs-4"></i>
+      </button>
+    </div>
+
     {% if es_emsa %}
     <!-- ===== Informe estilo hoja FyR (Villavicencio/EMSA) ===== -->
     {% set _t = fyr["TOTAL"] %}
@@ -1025,5 +1063,73 @@ async function cargarAlertas() {
   }
 }
 document.addEventListener('DOMContentLoaded', cargarAlertas);
+
+// ---- Chat con los datos ("Pregúntale a la IA") ----
+const CHAT_HIST = [];   // historial: [{rol:'usuario'|'ia', texto}]
+
+function abrirChat() {
+  document.getElementById('chatCard').classList.remove('d-none');
+  document.getElementById('chatBtn').classList.add('d-none');
+  document.getElementById('chatInput').focus();
+}
+
+function cerrarChat() {
+  document.getElementById('chatCard').classList.add('d-none');
+  document.getElementById('chatBtn').classList.remove('d-none');
+}
+
+function _pegar(texto, esUsuario) {
+  const caja = document.getElementById('chatMensajes');
+  if (CHAT_HIST.length === 0) caja.innerHTML = '';  // quita el texto de ayuda
+  const burbuja = document.createElement('div');
+  burbuja.className = 'mb-2 small ' +
+    (esUsuario ? 'text-end' : '');
+  burbuja.innerHTML = esUsuario
+    ? `<span class="badge bg-secondary text-wrap">${_esc(texto)}</span>`
+    : `<div class="bg-light border rounded p-2 text-start text-wrap">${_esc(texto)}</div>`;
+  caja.appendChild(burbuja);
+  caja.scrollTop = caja.scrollHeight;
+}
+
+function _esc(t) {
+  const d = document.createElement('div');
+  d.textContent = t == null ? '' : String(t);
+  return d.innerHTML;
+}
+
+async function enviarChat() {
+  const input = document.getElementById('chatInput');
+  const pregunta = (input.value || '').trim();
+  if (!pregunta) return;
+  input.value = '';
+  _pegar(pregunta, true);
+  const pensando = document.getElementById('chatPensando');
+  pensando.classList.remove('d-none');
+  try {
+    const resp = await fetch('/api/chat-ia', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({
+        pregunta: pregunta,
+        historial: CHAT_HIST,
+        report_id: (typeof REPORT_ID !== 'undefined' ? REPORT_ID : 0)
+      })
+    });
+    const d = await resp.json().catch(() => ({}));
+    const texto = (!resp.ok || d.error)
+      ? ('Error: ' + (d.error || 'No fue posible responder.'))
+      : d.respuesta;
+    _pegar(texto, false);
+    CHAT_HIST.push({rol: 'usuario', texto: pregunta});
+    CHAT_HIST.push({rol: 'ia', texto: texto});
+    // El historial se recorta para no enviar textos largos cada vez
+    while (CHAT_HIST.length > 12) CHAT_HIST.shift();
+  } catch (e) {
+    _pegar('Error de conexión: ' + e.message, false);
+  } finally {
+    pensando.classList.add('d-none');
+    input.focus();
+  }
+}
 </script>
 {% endblock %}

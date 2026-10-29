@@ -53,18 +53,7 @@
 
 ## Cola de pendientes (implementar en este orden sugerido)
 
-### 3. Chat con los datos ("Pregúntale a la IA")
-- **Dónde**: barra de chat flotante en informe general / información de
-  referencia.
-- **Capacidades**: preguntas tipo *"¿Cuánto se recaudó en Villavicencio en
-  el último semestre?"*, *"¿Qué estrato debe más?"*, *"Compárame abril vs
-  junio"*.
-- **Implementación**: la app arma un **contexto con los agregados** (tablas
-  resumidas por mes/estrato/clasificación) y la IA responde sobre eso.
-  Si necesita datos que no están en el contexto, responde "no tengo ese dato".
-- **Esfuerzo**: ~2-3 horas.
-- **Riesgo**: que el usuario pida datos de meses sin detalle guardado →
-  el contexto solo llevará resúmenes (que sí se conservan siempre).
+### 3. Chat con los datos ("Pregúntale a la IA") — implementado, ver historial
 
 ### 4. Conclusiones automáticas en el Word
 - **Dónde**: al generar `descargar_word` del informe general.
@@ -163,3 +152,18 @@
     en memoria) y `json.loads` de 359 MB cuesta 5,3 s. Por eso se
     precalcula y se usa `load_only` en el endpoint para no leer el blob.
   - Tests: 36/36 OK, JS validado con `node --check`.
+- **3. Chat con los datos ("Pregúntale a la IA")** — 29 oct 2026.
+  - Panel flotante en `general.html` (`#chatCard` + botón `#chatBtn`) con
+    historial de la conversación en el navegador (máx. 12 mensajes, no se
+    guarda en la BD). Endpoint `POST /api/chat-ia` (20/min).
+  - Módulo `backend/core/ia_chat.py`: el contexto sale de la tabla nueva
+    `resumen_mes` (totales por mes + desglose por estrato/clasificación),
+    **sin descomprimir el informe completo** (~850 MB en RAM). Se precalcula
+    en `save_report_to_db` y se hizo backfill con
+    `backend/scripts/precalcular_alertas.py` (17 resúmenes, ~0,6 s c/u).
+  - Validado con preguntas reales: cifras exactas, identifica el estrato
+    que debe más, cuenta los meses cargados y responde "no tengo ese dato"
+    cuando se le pregunta fuera del contexto. ~7-9 s por respuesta.
+  - Reglas anti-alucinación en `_INSTRUCCIONES_CHAT` (solo datos entregados,
+    formato colombiano, sin emojis).
+  - `resumen_mes` agregada a `TABLAS` en `scripts/migrar_a_postgres.py`.

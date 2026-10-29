@@ -492,6 +492,43 @@ def api_alertas(report_id):
     return jsonify(salida)
 
 
+# Chat con los datos ("Pregúntale a la IA") — idea #3. El contexto sale de
+# `resumen_mes` (pocos bytes), así que no se descomprime ningún informe.
+@bp.route("/api/chat-ia", methods=["POST"])
+@limiter.limit("20 per minute")
+def api_chat_ia():
+    from sqlalchemy.orm import load_only
+    from core.ia_chat import contexto_chat, responder
+    body = request.get_json(silent=True) or {}
+    pregunta = str(body.get("pregunta") or "").strip()
+    historial = body.get("historial") or []
+    report_id = body.get("report_id")
+    if not pregunta:
+        return jsonify({"error": "Escriba una pregunta."}), 400
+
+    if report_id:
+        report = (Report.query
+                  .options(load_only(Report.id, Report.anio, Report.mes,
+                                     Report.comercializadora_id))
+                  .get_or_404(report_id))
+    else:
+        report = (Report.query
+                  .options(load_only(Report.id, Report.anio, Report.mes,
+                                     Report.comercializadora_id))
+                  .order_by(Report.updated_at.desc()).first())
+    if report is None:
+        return jsonify({"error": "No hay informes cargados."}), 404
+
+    try:
+        respuesta, modelo = responder(pregunta, historial,
+                                      contexto_chat(report))
+    except RuntimeError as exc:
+        return jsonify({"error": str(exc)}), 503
+    except Exception as exc:
+        return jsonify({"error": f"No fue posible responder: {exc}"}), 502
+    return jsonify({"respuesta": respuesta, "modelo": modelo})
+
+
 # Recibe los archivos que se suben desde la página. Normalmente son dos
 # (facturación y recaudo); para Villavicencio/EMSA basta el archivo exógeno.
 @bp.route("/cargar", methods=["POST"])

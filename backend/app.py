@@ -160,6 +160,15 @@ with app.app_context():
         db.session.execute(sa_text("ALTER TABLE comercializadoras ADD COLUMN descripcion TEXT"))
     if "cartera_acumulada" not in _cols_com:
         db.session.execute(sa_text("ALTER TABLE comercializadoras ADD COLUMN cartera_acumulada TEXT"))
+
+    # La tabla resumen_mes es nueva; si ya existía sin la columna de
+    # estratos (creada antes de la idea #3), se agrega.
+    try:
+        _cols_res = [c["name"] for c in sa_inspect(db.engine).get_columns("resumen_mes")]
+        if "por_estrato" not in _cols_res:
+            db.session.execute(sa_text("ALTER TABLE resumen_mes ADD COLUMN por_estrato TEXT"))
+    except Exception:
+        pass
     db.session.commit()
 
     # Si las tarifas ya estaban guardadas dentro de info_especiales, se pasan a su propio campo

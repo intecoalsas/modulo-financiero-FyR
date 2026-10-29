@@ -1260,11 +1260,17 @@ def save_report_to_db(municipio, comercializadora, anio, mes,
 
     db.session.commit()
 
-    # Se precalculan las alertas/anomalías del informe (idea #2) para que la
-    # página las muestre al instante. Si falla, no interrumpe la carga.
+    # Se precalculan las alertas/anomalías del informe (idea #2) y el
+    # resumen numérico mensual (ideas #3, #6, #9) para que la página y el
+    # chat respondan al instante. Si falla, no interrumpe la carga.
     try:
         from core.alertas import guardar_alertas
         guardar_alertas(report)
+    except Exception:
+        db.session.rollback()
+    try:
+        from core.ia_chat import guardar_resumen
+        guardar_resumen(report)
     except Exception:
         db.session.rollback()
 
