@@ -38,6 +38,10 @@
 ## Cola de pendientes (implementar en este orden sugerido)
 
 ### 1. Análisis IA del informe
+- **Estado**: implementado (commit `6835d4a`), **falta validar con una API key
+  real** de Gemini (`backend/.env` → `GEMINI_API_KEY=`). Botón "Análisis IA"
+  en `general.html`, endpoint `POST /api/analisis-ia`, módulo
+  `backend/core/ia_analisis.py`.
 - **Dónde**: botón "Analizar con IA" en `general.html` (informe general).
 - **Flujo**: clic → `POST /api/analisis-ia` → la app recoge KPIs ya
   calculados (facturación, recaudo, diferencia, IAP facturado/no percibido,
@@ -49,17 +53,6 @@
 - **Esfuerzo**: ~45 min.
 - **Extras opcionales**: botón "Incluir en Word" para que el análisis entre
   al documento generado.
-
-### 2. Detección automática de anomalías y alertas
-- **Dónde**: tarjeta "Alertas" visible al abrir el informe (sin clic extra,
-  o bajo demanda).
-- **Reglas base** (calcular en Python, la IA solo redacta):
-  - Estrato con caída de recaudo >10% con facturación estable.
-  - Cuentas con facturación $0 en meses consecutivos.
-  - Sobrepagos (recaudo > facturado).
-  - Saltos de consumo >500% vs mes anterior.
-  - Cuentas duplicadas, consumos negativos.
-- **Esfuerzo**: ~1 hora.
 
 ### 3. Chat con los datos ("Pregúntale a la IA")
 - **Dónde**: barra de chat flotante en informe general / información de
@@ -141,4 +134,20 @@
 
 *(Aquí se va moviendo cada idea al terminarla, con fecha y commit.)*
 
-- _(vacío por ahora)_
+- **2. Detección automática de anomalías y alertas** — 29 oct 2026.
+  - Módulo `backend/core/alertas.py` con **11 reglas** en Python (sin IA):
+    cobertura de recaudo <95%, sobrepago, cartera del período, caída de
+    recaudo >10% con facturación estable, mayor brecha por clasificación,
+    sobrepago por clasificación, cuentas con facturación $0, consumos
+    negativos, `Id_cliente` duplicados, saltos >500% vs mes anterior, IAP
+    dejado de facturar / no percibido.
+  - Endpoint `GET /api/alertas/<report_id>` + tarjeta "Alertas del período"
+    en `general.html` (se llena al abrir la página).
+  - **Precalculación**: se guardan en la tabla nueva `alertas_reporte` al
+    guardar el informe (`save_report_to_db`), y backfill con
+    `backend/scripts/precalcular_alertas.py`.
+  - **Rendimiento**: de 29 s → **0,02 s** por consulta. Hallazgos clave:
+    un `general_data` parseado ocupa **~850 MB de RAM** (imposible cachear
+    en memoria) y `json.loads` de 359 MB cuesta 5,3 s. Por eso se
+    precalcula y se usa `load_only` en el endpoint para no leer el blob.
+  - Tests: 36/36 OK, JS validado con `node --check`.

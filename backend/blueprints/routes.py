@@ -470,6 +470,28 @@ def analisis_ia():
                     "periodo": f"{report.mes_nombre} {report.anio}"})
 
 
+# Alertas/anomalías del informe (reglas en Python, sin IA). Se precalculan al
+# guardar el reporte; la página solo lee el JSON chico ya guardado.
+@bp.route("/api/alertas/<int:report_id>")
+@limiter.limit("30 per minute")
+def api_alertas(report_id):
+    from sqlalchemy.orm import load_only
+    from core.alertas import obtener_alertas
+    # load_only: solo se leen columnas ligeras. Sin esto, get_or_404 trae el
+    # blob de 33 MB y tarda ~10 s aunque las alertas ya estén precalculadas.
+    report = (Report.query
+              .options(load_only(Report.id, Report.anio, Report.mes,
+                                 Report.comercializadora_id))
+              .get_or_404(report_id))
+    # OJO: no tocar report.general_data aquí. Descomprimir 33 MB cuesta ~10 s;
+    # solo se carga si el informe aún no tiene alertas precalculadas.
+    salida = obtener_alertas(report)
+    if not salida:
+        return jsonify({"error": "No fue posible calcular las alertas."}), 500
+    salida.setdefault("periodo", f"{report.mes_nombre} {report.anio}")
+    return jsonify(salida)
+
+
 # Recibe los archivos que se suben desde la página. Normalmente son dos
 # (facturación y recaudo); para Villavicencio/EMSA basta el archivo exógeno.
 @bp.route("/cargar", methods=["POST"])

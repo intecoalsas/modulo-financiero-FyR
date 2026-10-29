@@ -186,6 +186,23 @@ class Report(db.Model):
         return f"<Report {self.municipio_nombre}/{self.comercializadora_nombre} {self.mes}/{self.anio}>"
 
 
+# Alertas/anomalías precalculadas de un informe (idea #2).
+# Se calculan UNA vez al guardar el reporte y se guardan aquí: recorrer las
+# 235 mil filas + comparar con el mes anterior cuesta segundos, así que la
+# página solo lee este JSON chico y responde al instante.
+class AlertaReporte(db.Model):
+    __tablename__ = "alertas_reporte"
+
+    report_id = db.Column(
+        db.Integer, db.ForeignKey("reports.id", ondelete="CASCADE"),
+        primary_key=True)
+    datos = db.Column(db.Text, nullable=False, default="{}")
+    actualizado = db.Column(db.DateTime, default=ahora_utc)
+
+    def __repr__(self):
+        return f"<AlertaReporte report={self.report_id}>"
+
+
 # Registro de auditoría: quién (IP) hizo qué y cuándo (sin login no hay
 # usuario; cuando se agregue autenticación se suma usuario_id)
 class Auditoria(db.Model):
