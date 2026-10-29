@@ -21,15 +21,21 @@ import urllib.request
 # Carpeta del proyecto (backend/) para leer el .env
 _BASE = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
-# Modelos en orden de preferencia. Si el primero ya no existe en el tier
-# gratis, se prueba el siguiente (el nombre se puede sobreescribir con
-# GEMINI_MODEL en el .env).
+# Modelos en orden de preferencia. Si el primero falla (retirado, saturado,
+# timeout), se prueba el siguiente. El nombre se puede sobreescribir con
+# GEMINI_MODEL en el .env. Lista verificada contra la API el 29/10/2026:
+#   - gemini-2.5-flash / 2.5-flash-lite ya NO existen para usuarios nuevos.
+#   - 3.6-flash y flash-lite-latest responden bien en el tier gratis.
 _MODELOS_POR_DEFECTO = [
-    "gemini-2.0-flash",
-    "gemini-2.5-flash",
-    "gemini-flash-latest",
-    "gemini-2.0-flash-lite",
+    "gemini-flash-lite-latest",
+    "gemini-3.6-flash",
+    "gemini-3.5-flash-lite",
+    "gemini-3.1-flash-lite",
 ]
+
+# El último modelo que respondió bien se intenta primero en la siguiente
+# llamada (evita esperar timeouts de modelos que ya sabemos que fallan).
+_modelo_activo = None
 
 _URL_PLANTILLA = ("https://generativelanguage.googleapis.com/v1beta/models/"
                   "{modelo}:generateContent")
@@ -190,11 +196,27 @@ def armar_contexto(report, fyr=None, fyr_orden=None):
 
 def _llamar_gemini(prompt, clave, timeout=45):
     """Llama a la API de Gemini con urllib (sin dependencias externas)."""
-    modelos = ([_modelo_elegido()] if _modelo_elegido() else []) + _MODELOS_POR_DEFECTO
+    global _modelo_activo
+    modelos = ([_modelo_elegido()] if _modelo_elegido() else [])
+    if _modelo_activo:
+        modelos.append(_modelo_activo)
+    modelos += _MODELOS_POR_DEFECTO
     vistos, ultimo_error = set(), None
-    cuerpo = json.dumps({
+    # maxOutputTokens alto: los modelos "piensan" antes de responder y se
+    # comen los tokens de salida (con 900 el texto salía cortado a media
+    # respuesta, finishReason=MAX_TOKENS). thinkingBudget 0 = respuesta
+    # directa, más rápida y más barata en el tier gratis.
+    cuerpo_con_pensamiento = json.dumps({
         "contents": [{"parts": [{"text": prompt}]}],
-        "generationConfig": {"temperature": 0.2, "maxOutputTokens": 900},
+        "generationConfig": {
+            "temperature": 0.2,
+            "maxOutputTokens": 4000,
+            "thinkingConfig": {"thinkingBudget": 0},
+        },
+    }).encode("utf-8")
+    cuerpo_sin_pensamiento = json.dumps({
+        "contents": [{"parts": [{"text": prompt}]}],
+        "generationConfig": {"temperature": 0.2, "maxOutputTokens": 4000},
     }).encode("utf-8")
 
     for modelo in modelos:
@@ -202,34 +224,43 @@ def _llamar_gemini(prompt, clave, timeout=45):
             continue
         vistos.add(modelo)
         url = _URL_PLANTILLA.format(modelo=modelo) + f"?key={clave}"
-        req = urllib.request.Request(
-            url, data=cuerpo, method="POST",
-            headers={"Content-Type": "application/json"})
-        try:
-            with urllib.request.urlopen(req, timeout=timeout) as resp:
-                salida = json.loads(resp.read().decode("utf-8"))
-        except urllib.error.HTTPError as exc:
-            ultimo_error = f"HTTP {exc.code}"
+        # Se intenta primero sin "pensar"; si el modelo no lo acepta (400),
+        # se reintenta el mismo modelo con la configuración completa.
+        for cuerpo in (cuerpo_con_pensamiento, cuerpo_sin_pensamiento):
+            req = urllib.request.Request(
+                url, data=cuerpo, method="POST",
+                headers={"Content-Type": "application/json"})
             try:
-                detalle = json.loads(exc.read().decode("utf-8"))
-                ultimo_error = (detalle.get("error", {}) or {}).get(
-                    "message", ultimo_error)
-            except Exception:
-                pass
-            # 400/404/429 en un modelo: se prueba el siguiente
-            continue
-        except Exception as exc:  # red, timeout, etc.
-            ultimo_error = str(exc)
-            continue
+                with urllib.request.urlopen(req, timeout=timeout) as resp:
+                    salida = json.loads(resp.read().decode("utf-8"))
+            except urllib.error.HTTPError as exc:
+                ultimo_error = f"HTTP {exc.code}"
+                try:
+                    detalle = json.loads(exc.read().decode("utf-8"))
+                    ultimo_error = (detalle.get("error", {}) or {}).get(
+                        "message", ultimo_error)
+                except Exception:
+                    pass
+                # 400 por la configuración de "pensamiento": se reintenta
+                # el mismo modelo sin ella. Cualquier otro error: el siguiete.
+                if not (exc.code == 400 and "thinking" in ultimo_error.lower()):
+                    break
+                continue
+            except Exception as exc:  # red, timeout, etc.
+                ultimo_error = str(exc)
+                break
 
-        try:
-            texto = (salida["candidates"][0]["content"]["parts"][0]["text"] or "")
-        except (KeyError, IndexError, TypeError):
-            ultimo_error = "Respuesta inesperada de la API"
-            continue
-        if texto.strip():
-            return texto.strip(), modelo
-        ultimo_error = "Respuesta vacía"
+            try:
+                partes = salida["candidates"][0]["content"]["parts"]
+                texto = "".join((p.get("text") or "") for p in partes)
+            except (KeyError, IndexError, TypeError):
+                ultimo_error = "Respuesta inesperada de la API"
+                break
+            if texto.strip():
+                _modelo_activo = modelo  # se intentará primero la próxima vez
+                return texto.strip(), modelo
+            ultimo_error = "Respuesta vacía"
+            break
 
     raise RuntimeError(ultimo_error or "sin respuesta")
 

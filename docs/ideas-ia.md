@@ -13,10 +13,26 @@
 
 ## Decisión técnica (aplicar a TODAS las ideas)
 
-- **Proveedor**: Google Gemini (tier gratis, sin tarjeta) — `gemini-2.0-flash`.
-  - Alternativa si el tier gratis cambia: **Groq** (`openai/gpt-oss-120b`),
-    mismo esquema de código, solo cambia la URL y la key.
-  - Otra alternativa: OpenRouter con modelos `:free`.
+- **Proveedor**: Google Gemini (tier gratis, sin tarjeta).
+  - **Modelos que SÍ funcionan en el tier gratis (verificado 29/10/2026)**:
+    `gemini-flash-lite-latest` (primero en la lista), `gemini-3.6-flash`,
+    `gemini-3.5-flash-lite`, `gemini-3.1-flash-lite`.
+  - **Modelos YA RETIRADOS**: `gemini-2.0-flash`, `gemini-2.5-flash`,
+    `gemini-2.5-flash-lite` → devuelven HTTP 404 "no longer available".
+  - **Saturación**: `gemini-3.6-flash` a veces responde 503 "high demand";
+    por eso hay 4 modelos en la lista y el módulo recuerda cuál funcionó
+    (`_modelo_activo`) para ir directo al que sirve.
+  - Si el tier gratis cambia: **Groq** (`openai/gpt-oss-120b`), mismo esquema
+    de código, solo cambia la URL y la key. Otra alternativa: OpenRouter
+    con modelos `:free`.
+- **Configuración de la API** (importante, aprendido a la fuerza):
+  - `maxOutputTokens: 4000` — con 900 el texto salía **cortado a media
+    respuesta** (`finishReason: MAX_TOKENS`): los modelos "piensan" antes
+    de responder y se comen los tokens de salida.
+  - `thinkingConfig: {thinkingBudget: 0}` — responde sin razonamiento
+    interno: más rápido (27 s → 7 s) y más barato. Si un modelo no lo
+    acepta, el módulo reintenta sin esa opción.
+  - Tiempos reales: primera llamada 20-30 s, siguientes ~7 s.
 - **Key**: se guarda en `backend/.env` como `GEMINI_API_KEY=...`
   (archivo en `.gitignore`; **nunca** subir la key a GitHub).
 - **Cliente HTTP**: `google-genai` (SDK oficial) o `requests` directo.
@@ -36,23 +52,6 @@
 ---
 
 ## Cola de pendientes (implementar en este orden sugerido)
-
-### 1. Análisis IA del informe
-- **Estado**: implementado (commit `6835d4a`), **falta validar con una API key
-  real** de Gemini (`backend/.env` → `GEMINI_API_KEY=`). Botón "Análisis IA"
-  en `general.html`, endpoint `POST /api/analisis-ia`, módulo
-  `backend/core/ia_analisis.py`.
-- **Dónde**: botón "Analizar con IA" en `general.html` (informe general).
-- **Flujo**: clic → `POST /api/analisis-ia` → la app recoge KPIs ya
-  calculados (facturación, recaudo, diferencia, IAP facturado/no percibido,
-  tabla por estrato 1-6, clasificación Comercial/Oficial/Industrial/Otros,
-  usuarios por estrato, variación % vs mes anterior) → prompt → Gemini →
-  texto → tarjeta nueva en el informe.
-- **Salida esperada**: 4 bloques: *Resumen ejecutivo / Hallazgos /
-  Alertas / Recomendaciones*.
-- **Esfuerzo**: ~45 min.
-- **Extras opcionales**: botón "Incluir en Word" para que el análisis entre
-  al documento generado.
 
 ### 3. Chat con los datos ("Pregúntale a la IA")
 - **Dónde**: barra de chat flotante en informe general / información de
@@ -134,6 +133,19 @@
 
 *(Aquí se va moviendo cada idea al terminarla, con fecha y commit.)*
 
+- **1. Análisis IA del informe** — 29 oct 2026 (implementado `6835d4a`,
+  validado con key real).
+  - Botón "Análisis IA" en `general.html` + endpoint `POST /api/analisis-ia`
+    (rate limit 10/min) + módulo `backend/core/ia_analisis.py` con `urllib`
+    (cero dependencias nuevas).
+  - Envía **solo KPIs precalculados** (facturación, recaudo, % recaudado,
+    consumo, kWh, cuentas, comparación vs mes anterior y la tabla por
+    estrato/clasificación). **Nunca** las 235 mil filas de cuentas.
+  - Responde con los 4 encabezados: RESUMEN EJECUTIVO / HALLAZGOS /
+    ALERTAS / RECOMENDACIONES.
+  - Validado con informe real de Villavicencio (julio 2026): cifras
+    correctas, sin inventos, ~7 s en llamadas siguientes.
+  - API key en `backend/.env` (`GEMINI_API_KEY=`), archivo en `.gitignore`.
 - **2. Detección automática de anomalías y alertas** — 29 oct 2026.
   - Módulo `backend/core/alertas.py` con **11 reglas** en Python (sin IA):
     cobertura de recaudo <95%, sobrepago, cartera del período, caída de
