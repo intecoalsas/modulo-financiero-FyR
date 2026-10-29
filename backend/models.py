@@ -146,6 +146,9 @@ class Report(db.Model):
     especiales_data = db.Column(db.JSON, nullable=True)
 
     analisis_ejecutivo = db.Column(db.Text, nullable=True)
+    # Conclusiones generadas por la IA para el Word (idea #4): se generan
+    # UNA vez y quedan guardadas para no repetir la llamada en cada descarga
+    conclusiones_ia = db.Column(db.Text, nullable=True)
     novedades = db.Column(db.JSON, nullable=True)
 
     # Rutas de los archivos que se usaron y de los informes generados

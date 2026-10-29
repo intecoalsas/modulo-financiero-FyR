@@ -1468,9 +1468,29 @@ def descargar_word(report_id=None):
                                       cartera_data=cartera_data, acumulado=acumulado)
         fname = f"Informe_Especiales_{municipio}_{comercializadora}_{anio}_{mes}.docx"
     else:
+        # Conclusiones automáticas con IA (idea #4): se generan UNA vez y
+        # quedan en el reporte; cada descarga posterior solo las lee.
+        # Si la IA no responde, el Word se descarga igual sin ellas.
+        conclusiones = None
+        if report_id:
+            conclusiones = report.conclusiones_ia
+            if not conclusiones or request.args.get("actualizar_ia"):
+                try:
+                    from core.ia_analisis import armar_contexto, generar_conclusiones
+                    _es_fyr, _fyr, _fyr_orden = _contexto_fyr(
+                        municipio, comercializadora, general_data)
+                    contexto = armar_contexto(report, fyr=_fyr,
+                                              fyr_orden=_fyr_orden)
+                    conclusiones, _modelo = generar_conclusiones(contexto)
+                    report.conclusiones_ia = conclusiones
+                    db.session.commit()
+                except Exception:
+                    db.session.rollback()
+                    conclusiones = report.conclusiones_ia
         from reports.word_engine import generar_word_general
         buf = generar_word_general(general_data, analisis_ejecutivo, municipio=municipio, anio=anio,
-                                   mes=mes, comercializadora=comercializadora)
+                                   mes=mes, comercializadora=comercializadora,
+                                   conclusiones=conclusiones)
         fname = f"Analisis_IAP_{municipio}_{comercializadora}_{anio}_{mes}.docx"
 
     _auditar("descarga_word", f"{fname} (reporte #{report_id})")

@@ -543,7 +543,7 @@ def _fyr_tabla_zona(doc, titulo, filas):
 
 # Genera el documento Word del informe general
 def generar_word_general(general_data, analisis_ejecutivo=None, municipio="", anio=None,
-                         mes=None, comercializadora=""):
+                         mes=None, comercializadora="", conclusiones=None):
     doc = Document()
     _config(doc, "portrait")
     _footer_pagenum(doc)
@@ -693,6 +693,22 @@ def generar_word_general(general_data, analisis_ejecutivo=None, municipio="", an
             _pg.add_run().add_picture(_buf, width=Inches(6.0))
     except Exception:
         pass
+
+    # Conclusiones y recomendaciones con IA (idea #4): sección final
+    if conclusiones and str(conclusiones).strip():
+        p = _para(doc, WD_ALIGN_PARAGRAPH.JUSTIFY, space_before=10)
+        _set_run(p.add_run("CONCLUSIONES Y RECOMENDACIONES"), size=SZ_TXT,
+                 bold=True, color=FONT_DARK)
+        import re as _re
+        _txt = str(conclusiones).strip()
+        # Limpia marcas de la IA (**, *, encabezados) para el Word
+        _txt = _re.sub(r"^#+\s*", "", _txt, flags=_re.M)
+        _txt = _txt.replace("**", "").replace("__", "")
+        _parrafos = [x.strip() for x in _re.split(r"\n\s*\n", _txt) if x.strip()]
+        for _pr in _parrafos:
+            _pr = _re.sub(r"^[*-]\s+", "", _pr)
+            _p2 = _para(doc, WD_ALIGN_PARAGRAPH.JUSTIFY, space_before=3)
+            _set_run(_p2.add_run(_pr), size=SZ_TXT, color=FONT_DARK)
 
     # Firma al final del documento
     p = _para(doc, WD_ALIGN_PARAGRAPH.JUSTIFY, space_before=12)

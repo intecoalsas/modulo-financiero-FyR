@@ -276,6 +276,32 @@ def generar_analisis(contexto):
     return _llamar_gemini(prompt, clave)
 
 
+# Instrucciones para las conclusiones que se insertan en el Word (idea #4)
+_INSTRUCCIONES_CONCLUSIONES = (
+    "Eres analista senior de interventoría de alumbrado público en Colombia.\n"
+    "Redacta las CONCLUSIONES Y RECOMENDACIONES del informe mensual, en "
+    "español formal de interventoría, sin emojis, en 2 párrafos cortos "
+    "(máximo 220 palabras en total).\n"
+    "REGLAS ESTRICTAS:\n"
+    "1. Usa EXCLUSIVAMENTE las cifras entregadas. NO inventes números ni "
+    "hagas cálculos propios.\n"
+    "2. Cierra siempre con cifras exactas y el signo $ cuando aplique.\n"
+    "3. Termina con una recomendación concreta y accionable.\n"
+    "Devuelve SOLO el texto plano (sin encabezados, sin astericos, sin "
+    "numeración), listo para insertarse como párrafo de un documento Word.\n"
+)
+
+
+def generar_conclusiones(contexto):
+    """Conclusiones para el Word. Devuelve (texto, modelo_usado)."""
+    clave = cargar_clave()
+    if not clave:
+        raise RuntimeError("Falta la API key: cree backend/.env con "
+                           "GEMINI_API_KEY=... (ver docs/ideas-ia.md)")
+    prompt = f"{_INSTRUCCIONES_CONCLUSIONES}\n---\nDATOS DEL INFORME:\n{contexto}"
+    return _llamar_gemini(prompt, clave)
+
+
 # Instrucciones para el chat con los datos (idea #3)
 _INSTRUCCIONES_CHAT = (
     "Eres el analista de datos del Sistema de Informes F&R de interventoría "

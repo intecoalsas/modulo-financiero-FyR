@@ -55,12 +55,7 @@
 
 ### 3. Chat con los datos ("Pregúntale a la IA") — implementado, ver historial
 
-### 4. Conclusiones automáticas en el Word
-- **Dónde**: al generar `descargar_word` del informe general.
-- **Flujo**: mismo prompt base + KPIs → párrafo de **conclusiones y
-  recomendaciones** en lenguaje formal de interventoría → se inserta en el
-  documento (sección final).
-- **Esfuerzo**: ~1 hora.
+### 4. Conclusiones automáticas en el Word — implementado, ver historial
 
 ### 5. Explicación de cifras en lenguaje llano (ayuda en KPIs)
 - **Dónde**: ícono "?" junto a cada tarjeta KPI (facturación, recaudo,
@@ -167,3 +162,16 @@
   - Reglas anti-alucinación en `_INSTRUCCIONES_CHAT` (solo datos entregados,
     formato colombiano, sin emojis).
   - `resumen_mes` agregada a `TABLAS` en `scripts/migrar_a_postgres.py`.
+- **4. Conclusiones automáticas en el Word** — 29 oct 2026.
+  - Al descargar `descargar/word/<id>?tipo=general`, si el reporte no tiene
+    conclusiones se generan con la IA (`generar_conclusiones` con
+    `_INSTRUCCIONES_CONCLUSIONES`: 2 párrafos, ≤220 palabras, texto plano
+    para Word) y se guardan en la columna nueva `reports.conclusiones_ia`
+    (ALTER defensivo en `app.py`).
+  - La sección "CONCLUSIONES Y RECOMENDACIONES" se inserta antes de la
+    firma en `generar_word_general` (limpiando **, # y viñetas de la IA).
+  - **Solo la primera descarga llama a la IA** (~40 s); las siguientes
+    usan las guardadas. `?actualizar_ia=1` fuerza regenerarlas.
+  - Si la IA falla, el Word se descarga igual sin la sección (nunca rompe).
+  - Validado con informe real de Villavicencio: cifras exactas, sin marcas
+    de markdown, 36/36 tests OK.
