@@ -302,6 +302,22 @@ def generar_conclusiones(contexto):
     return _llamar_gemini(prompt, clave)
 
 
+# Instrucciones para explicar una cifra en lenguaje llano (idea #5)
+_INSTRUCCIONES_KPI = (
+    "Eres analista de interventoría de alumbrado público en Colombia y "
+    "explicas cifras a personas sin formación contable.\n"
+    "Explica la CIFRA A EXPLICAR en lenguaje sencillo y cotidiano, en "
+    "máximo 70 palabras (2 o 3 frases), sin emojis y sin tecnicismos.\n"
+    "REGLAS ESTRICTAS:\n"
+    "1. Usa SOLO las cifras entregadas; no inventes ni recalcules otras.\n"
+    "2. Da un ejemplo proporcional cuando ayude (por ejemplo: 'de cada "
+    "$100 facturados, $95 se recaudaron').\n"
+    "3. Di en una frase si el resultado es bueno, normal o preocupante y "
+    "por qué.\n"
+    "4. Devuelve SOLO el texto plano, sin encabezados ni viñetas.\n"
+)
+
+
 # Instrucciones para el chat con los datos (idea #3)
 _INSTRUCCIONES_CHAT = (
     "Eres el analista de datos del Sistema de Informes F&R de interventoría "

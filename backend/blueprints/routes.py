@@ -492,6 +492,44 @@ def api_alertas(report_id):
     return jsonify(salida)
 
 
+# Explicación de una cifra en lenguaje llano (idea #5). Se apoya en
+# `resumen_mes` (sin descomprimir el informe) y cachea el texto en
+# reports.explicaciones_ia para no repetir la llamada de IA.
+@bp.route("/api/explicar-kpi", methods=["POST"])
+@limiter.limit("15 per minute")
+def api_explicar_kpi():
+    from sqlalchemy.orm import load_only
+    from core.ia_chat import explicar_kpi
+    body = request.get_json(silent=True) or {}
+    kpi = str(body.get("kpi") or "").strip().lower()
+    report_id = body.get("report_id")
+    if not kpi:
+        return jsonify({"error": "Indique la cifra a explicar."}), 400
+    if report_id:
+        report = (Report.query
+                  .options(load_only(Report.id, Report.anio, Report.mes,
+                                     Report.comercializadora_id,
+                                     Report.explicaciones_ia))
+                  .get_or_404(report_id))
+    else:
+        report = (Report.query
+                  .options(load_only(Report.id, Report.anio, Report.mes,
+                                     Report.comercializadora_id,
+                                     Report.explicaciones_ia))
+                  .order_by(Report.updated_at.desc()).first())
+    if report is None:
+        return jsonify({"error": "No hay informes cargados."}), 404
+    try:
+        texto, cacheado = explicar_kpi(report, kpi)
+    except ValueError:
+        return jsonify({"error": "Cifra desconocida."}), 400
+    except RuntimeError as exc:
+        return jsonify({"error": str(exc)}), 503
+    except Exception as exc:
+        return jsonify({"error": f"No fue posible explicar la cifra: {exc}"}), 502
+    return jsonify({"texto": texto, "cacheado": cacheado, "kpi": kpi})
+
+
 # Chat con los datos ("Pregúntale a la IA") — idea #3. El contexto sale de
 # `resumen_mes` (pocos bytes), así que no se descomprime ningún informe.
 @bp.route("/api/chat-ia", methods=["POST"])

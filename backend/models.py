@@ -149,6 +149,10 @@ class Report(db.Model):
     # Conclusiones generadas por la IA para el Word (idea #4): se generan
     # UNA vez y quedan guardadas para no repetir la llamada en cada descarga
     conclusiones_ia = db.Column(db.Text, nullable=True)
+    # Explicaciones en lenguaje llano de cada KPI (idea #5). JSON
+    # {"facturacion": "...", "recaudo": "..."}: se generan una vez y se
+    # reutilizan para no llamar a la IA en cada visita.
+    explicaciones_ia = db.Column(db.Text, nullable=True)
     novedades = db.Column(db.JSON, nullable=True)
 
     # Rutas de los archivos que se usaron y de los informes generados

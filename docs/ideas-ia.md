@@ -57,14 +57,7 @@
 
 ### 4. Conclusiones automáticas en el Word — implementado, ver historial
 
-### 5. Explicación de cifras en lenguaje llano (ayuda en KPIs)
-- **Dónde**: ícono "?" junto a cada tarjeta KPI (facturación, recaudo,
-  diferencia, IAP).
-- **Flujo**: clic → prompt corto con la cifra y su contexto → la IA explica
-  (ej. *"de cada $100 facturados, $95 se recaudaron"*).
-- **Mejora posible**: pre-generar los textos una sola vez y **cachearlos**
-  (no repetir la llamada en cada visita).
-- **Esfuerzo**: ~45 min.
+### 5. Explicación de cifras en lenguaje llano (ayuda en KPIs) — implementado, ver historial
 
 ### 6. Proyección y metas de recaudo
 - **Dónde**: sección de comportamiento anual (información de referencia).
@@ -175,3 +168,18 @@
   - Si la IA falla, el Word se descarga igual sin la sección (nunca rompe).
   - Validado con informe real de Villavicencio: cifras exactas, sin marcas
     de markdown, 36/36 tests OK.
+- **5. Explicación de cifras en lenguaje llano (ayuda en KPIs)** —
+  30 oct 2026.
+  - Botón "?" en las 4 tarjetas KPI (Facturación, Recaudo, Valor Consumo,
+    Cartera). Al pulsarlo se explica la cifra en 2-3 frases (≤70 palabras)
+    con ejemplo proporcional ("de cada $100 facturados…") y una valoración
+    de si el resultado es bueno, normal o preocupante.
+  - Endpoint `POST /api/explicar-kpi` (15/min) + `explicar_kpi` en
+    `core/ia_chat.py`; el contexto sale de `resumen_mes` (sin descomprimir
+    el informe) e incluye el historial de meses para comparar.
+  - **Caché en `reports.explicaciones_ia`** (JSON por KPI, columna nueva
+    con ALTER defensivo): primera consulta ~3-7 s, siguientes 0,00 s.
+  - Si la IA falla, la tarjeta muestra el error y la página sigue normal.
+  - Validado con datos reales (San Pedro agosto 2026): "de cada $100
+    facturados se recaudaron $87,5… la cifra más baja de los últimos
+    meses", coherente con el historial. 36/36 tests OK.

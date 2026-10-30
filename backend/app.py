@@ -149,6 +149,8 @@ with app.app_context():
         db.session.execute(sa_text("ALTER TABLE reports ADD COLUMN novedades TEXT"))
     if "conclusiones_ia" not in _cols:
         db.session.execute(sa_text("ALTER TABLE reports ADD COLUMN conclusiones_ia TEXT"))
+    if "explicaciones_ia" not in _cols:
+        db.session.execute(sa_text("ALTER TABLE reports ADD COLUMN explicaciones_ia TEXT"))
 
     # Lo misme para las comercializadoras
     _cols_com = [c["name"] for c in sa_inspect(db.engine).get_columns("comercializadoras")]

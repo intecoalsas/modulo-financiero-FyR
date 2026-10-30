@@ -210,3 +210,81 @@ def resumen_json():
              "recaudo": f.recaudo, "cuentas": f.cuentas}
             for f in ResumenMes.query.order_by(ResumenMes.anio,
                                                ResumenMes.mes).all()]
+
+
+# ---------------------------------------------------------------------------
+# Idea #5: explicación de una cifra en lenguaje llano
+# ---------------------------------------------------------------------------
+KPIS = {
+    "facturacion": "Facturación",
+    "recaudo": "Recaudo",
+    "consumo": "Valor del consumo de energía (base gravable)",
+    "cartera": "Cartera (facturación menos recaudo)",
+}
+
+
+def contexto_kpi(report, kpi):
+    """Contexto corto (desde `resumen_mes`, sin descomprimir el informe)
+    para que la IA explique UNA cifra en lenguaje llano."""
+    if kpi not in KPIS:
+        raise ValueError("KPI desconocido")
+    from models import ResumenMes
+    fila = ResumenMes.query.get(report.id)
+    if not fila:
+        return ""
+    fact = fila.facturacion or 0
+    rec = fila.recaudo or 0
+    valor = {
+        "facturacion": fact,
+        "recaudo": rec,
+        "consumo": fila.valor_consumo or 0,
+        "cartera": fact - rec,
+    }[kpi]
+    pct = (rec / fact * 100) if fact else 0
+
+    bloques = [
+        "CONTEXTO",
+        f"Municipio: {report.municipio_nombre}",
+        f"Comercializadora: {report.comercializadora_nombre}",
+        f"Período: {report.mes_nombre} {report.anio}",
+        "",
+        "CIFRAS DEL PERÍODO",
+        f"Facturación del impuesto: {_peso(fact)}",
+        f"Recaudo del impuesto: {_peso(rec)}",
+        f"Porcentaje recaudado sobre lo facturado: {pct:.1f}%".replace(".", ","),
+        f"Valor del consumo de energía (base gravable): {_peso(fila.valor_consumo)}",
+        f"Energía facturada: {_num(fila.kwh)} kWh",
+        f"Cuentas / usuarios: {_num(fila.cuentas)}",
+        "",
+        f"CIFRA A EXPLICAR: {KPIS[kpi]} = {_peso(valor)}",
+    ]
+
+    ver_mes = _tabla_meses(report.id)
+    if ver_mes:
+        bloques += ["", "HISTORIAL DE MESES CARGADOS", ver_mes]
+    return "\n".join(bloques)
+
+
+def explicar_kpi(report, kpi):
+    """Devuelve (texto, cacheado). Guarda el resultado en
+    `reports.explicaciones_ia` para no repetir la llamada de IA."""
+    from models import db
+    from core.ia_analisis import _INSTRUCCIONES_KPI, llamar_ia
+
+    cache = {}
+    if report.explicaciones_ia:
+        try:
+            cache = json.loads(report.explicaciones_ia) or {}
+        except (ValueError, TypeError):
+            cache = {}
+    if cache.get(kpi):
+        return cache[kpi], True
+
+    contextual = contexto_kpi(report, kpi)
+    if not contextual:
+        raise RuntimeError("No hay resumen del período para explicar la cifra.")
+    texto, _modelo = llamar_ia(contextual, instrucciones=_INSTRUCCIONES_KPI)
+    cache[kpi] = texto
+    report.explicaciones_ia = json.dumps(cache, ensure_ascii=False)
+    db.session.commit()
+    return texto, False
