@@ -1,17 +1,22 @@
 # -*- coding: utf-8 -*-
-"""Análisis asistido por IA (Google Gemini, tier gratis).
+"""Análisis asistido por IA (Gemini gratis, Groq gratis como respaldo,
+Claude pago solo si se habilita explícitamente).
+
+Cadena de proveedores: Gemini -> Groq -> (Claude si CLAUDE_AS_FALLBACK=1).
+Cada proveedor prueba varios modelos en orden y recuerda cuál funcionó.
 
 Cómo funciona:
   1. `armar_contexto(report)` recoge SOLO cifras ya calculadas por la app
      (KPIs, totales por estrato y clasificación, variación vs mes anterior).
-  2. `generar_analisis(contexto)` envía esas cifras a Gemini y devuelve el
+  2. `generar_analisis(contexto)` envía esas cifras a la cadena y devuelve el
      texto con Resumen / Hallazgos / Alertas / Recomendaciones.
 
 Reglas de seguridad (ver docs/ideas-ia.md):
   * NUNCA se envían las filas detalle de cuentas (~235 mil), solo totales.
   * A la IA se le prohíbe inventar o recalcular cifras.
-  * La API key vive en .env (GEMINI_API_KEY) y jamás se sube a git.
-  * Si la API falla, se devuelve un mensaje claro y la página NO se rompe.
+  * Las API keys viven en .env y jamás se suben a git.
+  * Si todos los proveedores fallan, se devuelve un mensaje claro y la
+    página NO se rompe.
 """
 import json
 import os
@@ -21,21 +26,31 @@ import urllib.request
 # Carpeta del proyecto (backend/) para leer el .env
 _BASE = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
-# Modelos en orden de preferencia. Si el primero falla (retirado, saturado,
-# timeout), se prueba el siguiente. El nombre se puede sobreescribir con
-# GEMINI_MODEL en el .env. Lista verificada contra la API el 29/10/2026:
+# Modelos de Gemini en orden de preferencia. Si el primero falla (retirado,
+# saturado, timeout), se prueba el siguiente. El nombre se puede sobreescribir
+# con GEMINI_MODEL en el .env. Lista verificada contra la API el 29/10/2026:
 #   - gemini-2.5-flash / 2.5-flash-lite ya NO existen para usuarios nuevos.
 #   - 3.6-flash y flash-lite-latest responden bien en el tier gratis.
-_MODELOS_POR_DEFECTO = [
+_MODELOS_GEMINI = [
     "gemini-flash-lite-latest",
     "gemini-3.6-flash",
     "gemini-3.5-flash-lite",
     "gemini-3.1-flash-lite",
 ]
 
-# El último modelo que respondió bien se intenta primero en la siguiente
-# llamada (evita esperar timeouts de modelos que ya sabemos que fallan).
-_modelo_activo = None
+# Modelos de Groq (tier gratis, OpenAI-compatible). Se usan como respaldo
+# automático si Gemini falla por cuota o error. llama-3.3-70b es el de
+# mejor calidad; el 8b es el más rápido.
+_MODELOS_GROQ = [
+    "llama-3.3-70b-versatile",
+    "openai/gpt-oss-120b",
+    "llama-3.1-8b-instant",
+]
+
+# El último modelo que respondió bien por proveedor se intenta primero en la
+# siguiente llamada (evita esperar timeouts de modelos que ya sabemos que fallan).
+_modelo_gemini_activo = None
+_modelo_groq_activo = None
 
 _URL_PLANTILLA = ("https://generativelanguage.googleapis.com/v1beta/models/"
                   "{modelo}:generateContent")
@@ -55,9 +70,9 @@ _INSTRUCCIONES = (
 )
 
 
-def cargar_clave():
-    """Lee GEMINI_API_KEY desde variables de entorno o desde backend/.env."""
-    valor = (os.environ.get("GEMINI_API_KEY") or "").strip()
+def _cargar_clave(nombre):
+    """Lee una API key (NOMBRE) desde variables de entorno o desde backend/.env."""
+    valor = (os.environ.get(nombre) or "").strip()
     if valor:
         return valor
     ruta = os.path.join(_BASE, ".env")
@@ -68,15 +83,148 @@ def cargar_clave():
                 if not linea or linea.startswith("#") or "=" not in linea:
                     continue
                 clave, _, valor = linea.partition("=")
-                if clave.strip() == "GEMINI_API_KEY":
+                if clave.strip() == nombre:
                     return valor.strip().strip('"').strip("'")
     except OSError:
         pass
     return ""
 
 
+def cargar_clave():
+    """Compatibilidad: devuelve la key de Gemini."""
+    return _cargar_clave("GEMINI_API_KEY")
+
+
 def _modelo_elegido():
     return (os.environ.get("GEMINI_MODEL") or "").strip()
+
+
+def _modelo_groq_elegido():
+    return (os.environ.get("GROQ_MODEL") or "").strip()
+
+
+def _llamar_groq(prompt, clave, timeout=45):
+    """Llama a la API de Groq (OpenAI-compatible, tier gratis)."""
+    global _modelo_groq_activo
+    modelos = ([_modelo_groq_elegido()] if _modelo_groq_elegido() else [])
+    if _modelo_groq_activo:
+        modelos.append(_modelo_groq_activo)
+    modelos += _MODELOS_GROQ
+    vistos, ultimo_error = set(), None
+    url = "https://api.groq.com/openai/v1/chat/completions"
+    for modelo in modelos:
+        if not modelo or modelo in vistos:
+            continue
+        vistos.add(modelo)
+        cuerpo = json.dumps({
+            "model": modelo,
+            "messages": [{"role": "user", "content": prompt}],
+            "temperature": 0.2,
+            "max_tokens": 4000,
+        }).encode("utf-8")
+        req = urllib.request.Request(
+            url, data=cuerpo, method="POST",
+            headers={"Content-Type": "application/json",
+                    "Authorization": "Bearer " + clave})
+        try:
+            with urllib.request.urlopen(req, timeout=timeout) as resp:
+                salida = json.loads(resp.read().decode("utf-8"))
+        except urllib.error.HTTPError as exc:
+            ultimo_error = f"HTTP {exc.code}"
+            try:
+                detalle = json.loads(exc.read().decode("utf-8"))
+                ultimo_error = (detalle.get("error", {}) or {}).get(
+                    "message", ultimo_error)
+            except Exception:
+                pass
+            # 429 (cuota) o 404 (modelo retirado): se prueba el siguiente
+            continue
+        except Exception as exc:
+            ultimo_error = str(exc)
+            continue
+        try:
+            texto = salida["choices"][0]["message"]["content"]
+        except (KeyError, IndexError, TypeError):
+            ultimo_error = "Respuesta inesperada de la API"
+            continue
+        if texto and texto.strip():
+            _modelo_groq_activo = modelo
+            return texto.strip(), modelo
+        ultimo_error = "Respuesta vacía"
+    raise RuntimeError(ultimo_error or "sin respuesta de Groq")
+
+
+def _llamar_claude(prompt, clave, timeout=45):
+    """Llama a la API de Anthropic (Claude Haiku, pago). Uso opt-in."""
+    modelo = os.environ.get("CLAUDE_MODEL", "claude-haiku-4-5").strip()
+    cuerpo = json.dumps({
+        "model": modelo,
+        "max_tokens": 1200,
+        "messages": [{"role": "user", "content": prompt}],
+    }).encode("utf-8")
+    url = "https://api.anthropic.com/v1/messages"
+    req = urllib.request.Request(
+        url, data=cuerpo, method="POST",
+        headers={
+            "Content-Type": "application/json",
+            "x-api-key": clave,
+            "anthropic-version": "2023-06-01",
+        })
+    try:
+        with urllib.request.urlopen(req, timeout=timeout) as resp:
+            salida = json.loads(resp.read().decode("utf-8"))
+    except urllib.error.HTTPError as exc:
+        msg = f"HTTP {exc.code}"
+        try:
+            detalle = json.loads(exc.read().decode("utf-8"))
+            msg = (detalle.get("error", {}) or {}).get("message", msg)
+        except Exception:
+            pass
+        raise RuntimeError(msg)
+    except Exception as exc:
+        raise RuntimeError(str(exc))
+    try:
+        bloques = salida.get("content") or []
+        texto = "".join(b.get("text", "") for b in bloques if b.get("type") == "text")
+    except (KeyError, TypeError):
+        raise RuntimeError("Respuesta inesperada de la API")
+    if not texto.strip():
+        raise RuntimeError("Respuesta vacía")
+    return texto.strip(), modelo
+
+
+def _llamar_con_cadena(prompt, timeout=45):
+    """Cadena de proveedores: Gemini (gratis) -> Groq (gratis) -> Claude
+    (solo si CLAUDE_AS_FALLBACK=1 y hay key). Lanza RuntimeError si todos
+    fallan o no hay ninguno configurado."""
+    errores = []
+    # 1. Gemini
+    clave_g = _cargar_clave("GEMINI_API_KEY")
+    if clave_g:
+        try:
+            return _llamar_gemini(prompt, clave_g, timeout)
+        except RuntimeError as exc:
+            errores.append(f"Gemini: {exc}")
+    # 2. Groq (respaldo gratuito)
+    clave_q = _cargar_clave("GROQ_API_KEY")
+    if clave_q:
+        try:
+            return _llamar_groq(prompt, clave_q, timeout)
+        except RuntimeError as exc:
+            errores.append(f"Groq: {exc}")
+    # 3. Claude (solo si se habilita explícitamente como respaldo)
+    if os.environ.get("CLAUDE_AS_FALLBACK", "").strip().lower() in ("1", "true", "yes", "si", "sí"):
+        clave_c = _cargar_clave("ANTHROPIC_API_KEY")
+        if clave_c:
+            try:
+                return _llamar_claude(prompt, clave_c, timeout)
+            except RuntimeError as exc:
+                errores.append(f"Claude: {exc}")
+    if not errores:
+        raise RuntimeError(
+            "Ningún proveedor de IA configurado. Añada GEMINI_API_KEY o "
+            "GROQ_API_KEY en backend/.env (ver docs/ideas-ia.md).")
+    raise RuntimeError(" | ".join(errores))
 
 
 def _fmt(valor):
@@ -196,11 +344,11 @@ def armar_contexto(report, fyr=None, fyr_orden=None):
 
 def _llamar_gemini(prompt, clave, timeout=45):
     """Llama a la API de Gemini con urllib (sin dependencias externas)."""
-    global _modelo_activo
+    global _modelo_gemini_activo
     modelos = ([_modelo_elegido()] if _modelo_elegido() else [])
-    if _modelo_activo:
-        modelos.append(_modelo_activo)
-    modelos += _MODELOS_POR_DEFECTO
+    if _modelo_gemini_activo:
+        modelos.append(_modelo_gemini_activo)
+    modelos += _MODELOS_GEMINI
     vistos, ultimo_error = set(), None
     # maxOutputTokens alto: los modelos "piensan" antes de responder y se
     # comen los tokens de salida (con 900 el texto salía cortado a media
@@ -257,7 +405,7 @@ def _llamar_gemini(prompt, clave, timeout=45):
                 ultimo_error = "Respuesta inesperada de la API"
                 break
             if texto.strip():
-                _modelo_activo = modelo  # se intentará primero la próxima vez
+                _modelo_gemini_activo = modelo  # se intentará primero la próxima vez
                 return texto.strip(), modelo
             ultimo_error = "Respuesta vacía"
             break
@@ -266,14 +414,10 @@ def _llamar_gemini(prompt, clave, timeout=45):
 
 
 def generar_analisis(contexto):
-    """Devuelve (texto, modelo_usado). Lanza RuntimeError si no hay clave
-    o si la API no responde."""
-    clave = cargar_clave()
-    if not clave:
-        raise RuntimeError("Falta la API key: cree backend/.env con "
-                           "GEMINI_API_KEY=... (ver docs/ideas-ia.md)")
+    """Devuelve (texto, modelo_usado). Lanza RuntimeError si ningún
+    proveedor responde."""
     prompt = f"{_INSTRUCCIONES}\n---\nDATOS DEL INFORME:\n{contexto}"
-    return _llamar_gemini(prompt, clave)
+    return _llamar_con_cadena(prompt)
 
 
 # Instrucciones para las conclusiones que se insertan en el Word (idea #4)
@@ -294,12 +438,8 @@ _INSTRUCCIONES_CONCLUSIONES = (
 
 def generar_conclusiones(contexto):
     """Conclusiones para el Word. Devuelve (texto, modelo_usado)."""
-    clave = cargar_clave()
-    if not clave:
-        raise RuntimeError("Falta la API key: cree backend/.env con "
-                           "GEMINI_API_KEY=... (ver docs/ideas-ia.md)")
     prompt = f"{_INSTRUCCIONES_CONCLUSIONES}\n---\nDATOS DEL INFORME:\n{contexto}"
-    return _llamar_gemini(prompt, clave)
+    return _llamar_con_cadena(prompt)
 
 
 # Instrucciones para explicar una cifra en lenguaje llano (idea #5)
@@ -338,9 +478,5 @@ _INSTRUCCIONES_CHAT = (
 
 def llamar_ia(contexto, instrucciones=None):
     """Llamada genérica a la IA. Devuelve (texto, modelo_usado)."""
-    clave = cargar_clave()
-    if not clave:
-        raise RuntimeError("Falta la API key: cree backend/.env con "
-                           "GEMINI_API_KEY=... (ver docs/ideas-ia.md)")
     prompt = f"{instrucciones or _INSTRUCCIONES}\n---\nDATOS:\n{contexto}"
-    return _llamar_gemini(prompt, clave)
+    return _llamar_con_cadena(prompt)
