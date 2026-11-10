@@ -41,17 +41,32 @@ def api(method, path, body=None):
 
 # 1. Organizaciones del usuario
 orgs = api("GET", "/organizations")
-if not orgs.get("organizations"):
+if isinstance(orgs, dict):
+    orgs = orgs.get("organizations") or orgs.get("data") or []
+if not orgs:
     raise SystemExit("No se encontraron organizaciones en la cuenta.")
-org = orgs["organizations"][0]["name"] if isinstance(orgs["organizations"][0], dict) else orgs["organizations"][0]
-print(f"Organización: {org}")
+org = orgs[0].get("slug", orgs[0]["name"]) if isinstance(orgs[0], dict) else orgs[0]
+print(f"Organización: {orgs[0].get('name') if isinstance(orgs[0], dict) else org} (slug: {org})")
 
-# 2. Crear la base (si ya existe, se ignora el error)
+# 2. Asegurar un grupo (Turso exige grupo; en el plan gratis se crea uno)
+groups = api("GET", f"/organizations/{org}/groups")
+grupos = groups.get("groups", groups) if isinstance(groups, dict) else groups
+if not grupos:
+    try:
+        api("POST", f"/organizations/{org}/groups", {"name": "default", "location": "aws-sa-east-1"})
+        print("Grupo 'default' creado en iad (Ashburn, EE. UU.).")
+    except SystemExit as e:
+        # puede que la ubicación no esté disponible; intentar sin location
+        print("Aviso al crear grupo:", e)
+        raise
+grupo = "default"
+
+# 3. Crear la base (si ya existe, se ignora el error)
 try:
-    api("POST", f"/organizations/{org}/databases", {"name": NOMBRE, "group": "default"})
+    api("POST", f"/organizations/{org}/databases", {"name": NOMBRE, "group": grupo})
     print(f"Base '{NOMBRE}' creada.")
 except SystemExit as e:
-    if "already exists" in str(e).lower() or "conflict" in str(e).lower():
+    if "already exists" in str(e).lower() or "conflict" in str(e).lower() or "duplicate" in str(e).lower():
         print(f"La base '{NOMBRE}' ya existía, se reutiliza.")
     else:
         raise

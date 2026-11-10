@@ -21,6 +21,9 @@ os.chdir(BASE)
 
 from sqlalchemy import create_engine, text, inspect as sa_inspect
 
+from core.turso_dialect import register as _reg_turso
+_reg_turso()
+
 from core.turso_dbapi import configure as _cfg_turso
 
 TURSO_URL = (os.environ.get("TURSO_DATABASE_URL") or "").strip()
@@ -55,6 +58,7 @@ print("Esquema creado en Turso.")
 
 src_conn = src.connect()
 dst_conn = dst.connect()
+src_ins = sa_inspect(src)
 for tabla in TABLAS:
     if tabla not in src_ins.get_table_names():
         print(f"  {tabla}: no existe en origen, se omite")
