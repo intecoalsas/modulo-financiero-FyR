@@ -25,16 +25,25 @@ app = Flask(
     static_folder=os.path.join(FRONTEND_DIR, "static"),
 )
 app.secret_key = os.environ.get("SECRET_KEY", "solo-desarrollo-cambiar-en-produccion")
-# Producción (Postgres en la nube) o desarrollo (SQLite local).
-# Render/Neon entregan postgres:// : se normaliza al esquema de SQLAlchemy.
+# Producción (Turso/Postgres en la nube) o desarrollo (SQLite local).
 _db_url = (os.environ.get("DATABASE_URL") or "").strip()
 if _db_url.startswith("postgres://"):
     _db_url = "postgresql+psycopg://" + _db_url[len("postgres://"):]
+# Turso (libSQL) se detecta por el esquema libsql:// o por TURSO_DATABASE_URL
+_turso_url = (os.environ.get("TURSO_DATABASE_URL") or "").strip()
+if _turso_url or _db_url.startswith("libsql://") or "turso.io" in _db_url:
+    if _db_url.startswith("libsql://"):
+        os.environ.setdefault("TURSO_DATABASE_URL", _db_url)
+    _db_url = "turso:///"
 if not _db_url:
     _db_url = "sqlite:///" + os.path.join(BASE_DIR, "instance", "informes.db")
 # La base de datos es un solo archivo sqlite que vive en backend/instance
 app.config["SQLALCHEMY_DATABASE_URI"] = _db_url
 app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
+# Turso va por HTTP: sin pooling (cada operación con conexión propia)
+if _db_url == "turso:///":
+    from sqlalchemy.pool import NullPool
+    app.config["SQLALCHEMY_ENGINE_OPTIONS"] = {"poolclass": NullPool}
 # Tamaño máximo de subida (MB) por variable de entorno (80 para Villavicencio)
 app.config["MAX_CONTENT_LENGTH"] = int(os.environ.get("MAX_UPLOAD_MB", "80")) * 1024 * 1024
 
@@ -61,6 +70,11 @@ if os.environ.get("FLASK_ENV") == "production":
     }
     Talisman(app, force_https=True, frame_options="SAMEORIGIN",
              content_security_policy=_csp)
+
+# Se registra el dialecto de Turso si se va a usar
+if _db_url == "turso:///":
+    from core.turso_dialect import register as _reg_turso
+    _reg_turso()
 
 # Se conecta la base de datos con la app
 from models import db
