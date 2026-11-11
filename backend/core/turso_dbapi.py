@@ -84,7 +84,7 @@ def _to_turso_arg(p):
     if isinstance(p, int):
         return {"type": "integer", "value": str(p)}
     if isinstance(p, float):
-        return {"type": "float", "value": repr(p)}
+        return {"type": "float", "value": p}
     if isinstance(p, (bytes, bytearray)):
         return {"type": "blob", "base64": base64.b64encode(bytes(p)).decode("ascii")}
     if isinstance(p, (datetime, date)):
