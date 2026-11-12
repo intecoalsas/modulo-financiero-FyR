@@ -1021,18 +1021,26 @@ def cargar_cartera_desde_referencia(comercializadora, path, anio):
         comercializadora.descripcion = json.loads(json.dumps(data["descripcion"], default=str))
     db.session.commit()
 
-    # Se actualiza la cartera de cada reporte ya guardado de ese año
-    from models import Report
+    # Se actualiza la cartera de cada reporte ya guardado de ese año.
+    # load_only deja fuera general_data (el blob): casi siempre basta con las
+    # filas de especiales; si un informe viejo no las tiene, SQLAlchemy la
+    # carga aparte (lazy) solo para ese reporte.
+    from sqlalchemy.orm import load_only
     reps = (Report.query
+            .options(load_only(Report.id, Report.mes, Report.especiales_data))
             .filter_by(comercializadora_id=comercializadora.id, anio=anio)
             .order_by(Report.mes.asc())
             .all())
     for rep in reps:
-        gd = rep.general_data or {}
         esp = rep.especiales_data or {}
-        actualizar_cartera_mes(comercializadora, anio, rep.mes,
-                               general_data={"facturacion": gd.get("facturacion") or []},
-                               especiales_filas=esp.get("filas"))
+        if esp.get("filas"):
+            actualizar_cartera_mes(comercializadora, anio, rep.mes,
+                                   especiales_filas=esp.get("filas"))
+        else:
+            gd = rep.general_data or {}
+            actualizar_cartera_mes(comercializadora, anio, rep.mes,
+                                   general_data={"facturacion": gd.get("facturacion") or []},
+                                   especiales_filas=None)
     return cartera
 
 
@@ -1234,7 +1242,14 @@ def save_report_to_db(municipio, comercializadora, anio, mes,
     if isinstance(general_data, str) and general_data.strip() in ('null', '{}', '[]', ''):
         general_data = None
 
-    existing = Report.query.filter_by(comercializadora_id=c.id, anio=anio, mes=mes).first()
+    # load_only(Report.id): del informe existente solo interesa su id (si
+    # existe). Los demás campos se sobrescriben abajo, así no se descarga
+    # ni descomprime el blob de 33 MB al recargar un mes.
+    from sqlalchemy.orm import load_only
+    existing = (Report.query
+                .options(load_only(Report.id))
+                .filter_by(comercializadora_id=c.id, anio=anio, mes=mes)
+                .first())
     if existing:
         existing.general_data = general_data
         existing.especiales_data = especiales_data

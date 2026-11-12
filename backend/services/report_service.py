@@ -61,11 +61,6 @@ def get_all_reports(filtro_municipio=None, filtro_comerc=None, filtro_mes=None):
     return q.order_by(Report.anio.desc(), Report.mes.desc()).all()
 
 
-# Busca un reporte por su id, y si no existe da error 404
-def get_report(report_id):
-    return Report.query.get_or_404(report_id)
-
-
 # Borra un reporte de la base de datos
 def delete_report(report_id):
     report = Report.query.get_or_404(report_id)
@@ -73,17 +68,19 @@ def delete_report(report_id):
     db.session.commit()
 
 
-# Nombre del municipio de un reporte (para mostrar en los títulos)
+# Nombre del municipio de un reporte (para mostrar en los títulos).
+# Consulta por JOIN y devuelve solo el nombre: no carga el reporte ni su blob.
 def get_municipio_nombre(report_id):
-    r = Report.query.get(report_id)
-    if r and r.comercializadora:
-        return r.comercializadora.municipio.nombre
-    return ""
+    return (db.session.query(Municipio.nombre)
+            .join(Comercializadora, Comercializadora.municipio_id == Municipio.id)
+            .join(Report, Report.comercializadora_id == Comercializadora.id)
+            .filter(Report.id == report_id)
+            .scalar() or "")
 
 
-# Nombre de la comercializadora de un reporte
+# Nombre de la comercializadora de un reporte (igual: solo el nombre)
 def get_comerc_nombre(report_id):
-    r = Report.query.get(report_id)
-    if r and r.comercializadora:
-        return r.comercializadora.nombre
-    return ""
+    return (db.session.query(Comercializadora.nombre)
+            .join(Report, Report.comercializadora_id == Comercializadora.id)
+            .filter(Report.id == report_id)
+            .scalar() or "")

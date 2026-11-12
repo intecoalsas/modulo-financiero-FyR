@@ -313,12 +313,18 @@ def detectar_alertas(report, fyr=None, fyr_orden=None, fyr_prev=None,
 
 def _mes_anterior(report):
     from models import Report
+    from sqlalchemy.orm import load_only
     anio, mes = report.anio, report.mes
     if mes == 1:
         mes, anio = 12, anio - 1
     else:
         mes -= 1
+    # El blob general_data sí se necesita (filas de facturación/recaudo para
+    # las reglas 4-6 y la de saltos). load_only evita traer page_data,
+    # especiales_data y las demás columnas de relleno.
     return (Report.query
+            .options(load_only(Report.id, Report.comercializadora_id,
+                               Report.anio, Report.mes, Report.general_data))
             .filter(Report.comercializadora_id == report.comercializadora_id,
                     Report.anio == anio, Report.mes == mes)
             .first())
