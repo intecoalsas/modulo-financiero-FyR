@@ -251,14 +251,22 @@ def _fmt_pct(valor):
 
 
 def _mes_anterior(report):
-    """Devuelve el reporte del mes inmediatamente anterior (misma comerc.)."""
+    """Devuelve el reporte del mes inmediatamente anterior (misma comerc.).
+
+    Liviano: solo se leen columnas chicas para encontrar el id. El blob del
+    anterior (general_data) queda diferido: solo se descarga si no hay
+    resumen mensual precalculado para ese informe.
+    """
     from models import Report
+    from sqlalchemy.orm import load_only
     anio, mes = report.anio, report.mes
     if mes == 1:
         mes, anio = 12, anio - 1
     else:
         mes -= 1
     return (Report.query
+            .options(load_only(Report.id, Report.comercializadora_id,
+                               Report.anio, Report.mes))
             .filter(Report.comercializadora_id == report.comercializadora_id,
                     Report.anio == anio, Report.mes == mes)
             .first())
@@ -285,9 +293,14 @@ def _tabla_fyr(fyr, fyr_orden):
     return "\n".join(lineas)
 
 
-def armar_contexto(report, fyr=None, fyr_orden=None):
-    """Junta las cifras del informe para enviarlas a la IA."""
-    datos = report.general_data or {}
+def armar_contexto(report, fyr=None, fyr_orden=None, datos=None):
+    """Junta las cifras del informe para enviarlas a la IA.
+
+    `datos` puede ser el page_data liviano (~6 KB); si no se pasa, usa
+    report.general_data (descomprime el blob: solo informes viejos).
+    """
+    if datos is None:
+        datos = report.general_data or {}
     f = datos.get("f") or {}
     r = datos.get("r") or {}
     prev = _mes_anterior(report)
@@ -314,10 +327,19 @@ def armar_contexto(report, fyr=None, fyr_orden=None):
     bloques.append(f"- Energía facturada: {_fmt_n(kwh)} kWh")
     bloques.append(f"- Cuentas / usuarios: {_fmt_n(cuentas)}")
 
-    # Comparación con el mes anterior (si existe reporte previo)
-    if prev is not None and prev.general_data:
-        pf = (prev.general_data.get("f") or {}).get("total_imp") or 0
-        pr = (prev.general_data.get("r") or {}).get("total_valor") or 0
+    # Comparación con el mes anterior: sale de `resumen_mes` (unos bytes).
+    # Solo si el informe anterior nunca se resumió se descomprime su blob.
+    if prev is not None:
+        from models import ResumenMes
+        pf = pr = None
+        fila_prev = ResumenMes.query.get(prev.id)
+        if fila_prev is not None:
+            pf = fila_prev.facturacion or 0
+            pr = fila_prev.recaudo or 0
+        else:
+            pd_prev = prev.general_data or {}
+            pf = (pd_prev.get("f") or {}).get("total_imp") or 0
+            pr = (pd_prev.get("r") or {}).get("total_valor") or 0
         if pf or pr:
             bloques.append(f"\nCOMPARACIÓN VS MES ANTERIOR "
                            f"({prev.mes_nombre} {prev.anio})")

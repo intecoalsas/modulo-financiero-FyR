@@ -281,6 +281,29 @@ _CAMPOS_DETALLE = {
                 "ImpuestoAP", "Consumo$", "ConsumokWh", "ValorAP"],
 }
 
+# Caché en memoria del informe ya descomprimido (UNA entrada: el último
+# reporte pedido). /api/detalle y /api/valores reciben muchas peticiones
+# seguidas (paginación, filtros); sin esto cada una re-descargaría y
+# re-descomprimiría los 33 MB del blob. Se invalida al cargar/borrar un
+# informe (_invalidar_cache) y expira a los 10 minutos por si acaso.
+_detalle_cache = {"report_id": None, "datos": None, "ts": 0}
+
+
+def _datos_detalle(report_id):
+    """general_data ya descomprimido de un reporte guardado (con caché)."""
+    c = _detalle_cache
+    ahora = time.time()
+    if (c["report_id"] == report_id and c["datos"] is not None
+            and (ahora - c["ts"]) < 600):
+        return c["datos"]
+    from sqlalchemy.orm import load_only
+    report = (Report.query
+              .options(load_only(Report.id, Report.general_data))
+              .get_or_404(report_id))
+    datos = report.general_data or {}
+    c.update(report_id=report_id, datos=datos, ts=ahora)
+    return datos
+
 
 # Une facturación y recaudo en una sola fila por cuenta (listado único)
 def _unir_cuentas(facturacion, recaudo):
@@ -348,8 +371,7 @@ def api_detalle(report_id=None):
         filtros = {}
 
     if report_id:
-        report = Report.query.get_or_404(report_id)
-        general_data = report.general_data or {}
+        general_data = _datos_detalle(report_id)
     else:
         general_data = DATA.get("general") or {}
     filas = _filas_detalle(general_data, tipo)
@@ -426,8 +448,7 @@ def api_valores(report_id=None):
         return jsonify({"valores": [], "total": 0})
 
     if report_id:
-        report = Report.query.get_or_404(report_id)
-        general_data = report.general_data or {}
+        general_data = _datos_detalle(report_id)
     else:
         general_data = DATA.get("general") or {}
     filas = _filas_detalle(general_data, tipo)
@@ -450,20 +471,46 @@ def api_valores(report_id=None):
 @bp.route("/api/analisis-ia", methods=["POST"])
 @limiter.limit("10 per minute")
 def analisis_ia():
+    from sqlalchemy.orm import load_only
     from core.ia_analisis import armar_contexto, generar_analisis
     body = request.get_json(silent=True) or {}
     report_id = body.get("report_id")
+    cols = (Report.id, Report.anio, Report.mes, Report.comercializadora_id,
+            Report.page_data)
     if report_id:
-        report = Report.query.get_or_404(report_id)
+        report = (Report.query
+                  .options(load_only(*cols))
+                  .get_or_404(report_id))
     else:
-        report = Report.query.order_by(Report.updated_at.desc()).first()
-    if report is None or report.general_data is None:
+        report = (Report.query
+                  .options(load_only(*cols))
+                  .order_by(Report.updated_at.desc()).first())
+    if report is None:
+        return jsonify({"error": "No hay informe cargado."}), 404
+    # page_data (~6 KB) trae los mismos KPIs que el blob sin comprimir:
+    # el blob (general_data) solo se descomprime en informes viejos sin
+    # versión liviana (columna diferida, se carga aparte).
+    datos = None
+    if getattr(report, "page_data", None):
+        try:
+            datos = json.loads(report.page_data)
+        except Exception:
+            datos = None
+    if datos is None:
+        datos = report.general_data
+    if not datos:
         return jsonify({"error": "No hay informe cargado."}), 404
     es_emsa, fyr, fyr_orden = _contexto_fyr(
-        report.municipio_nombre, report.comercializadora_nombre,
-        report.general_data)
+        report.municipio_nombre, report.comercializadora_nombre, datos)
+    if es_emsa and not fyr:
+        # page_data sin tabla FYR precalculada (informe antiguo): aquí sí se
+        # descomprime el blob para recomer las filas (solo esta primera vez).
+        es_emsa, fyr, fyr_orden = _contexto_fyr(
+            report.municipio_nombre, report.comercializadora_nombre,
+            report.general_data)
     try:
-        contexto = armar_contexto(report, fyr=fyr, fyr_orden=fyr_orden)
+        contexto = armar_contexto(report, fyr=fyr, fyr_orden=fyr_orden,
+                                  datos=datos)
         texto, modelo = generar_analisis(contexto)
     except RuntimeError as exc:
         return jsonify({"error": str(exc)}), 503
@@ -860,6 +907,7 @@ _muni_ultimo_cache = {"valor": None, "ts": 0}
 def _invalidar_cache():
     _hist_cache.clear()
     _muni_ultimo_cache["valor"] = None
+    _detalle_cache.update(report_id=None, datos=None, ts=0)
 
 
 def _muni_ultimo():
@@ -940,6 +988,12 @@ def _contexto_fyr(municipio, comercializadora, general_data):
                or (municipio or "").strip().lower() == "villavicencio")
     if not es_emsa:
         return False, None, None
+    # page_data ya trae la tabla FYR precalculada (se evita recomer las
+    # 235 mil filas). Con general_data completo no existe "fyr" y se calcula.
+    precalc = (general_data or {}).get("fyr")
+    if isinstance(precalc, dict) and precalc:
+        orden = (general_data or {}).get("fyr_orden") or FYR_ORDEN
+        return True, precalc, list(orden)
     fyr = fyr_agregar((general_data or {}).get("facturacion"),
                       (general_data or {}).get("recaudo"))
     return True, fyr, list(FYR_ORDEN)
