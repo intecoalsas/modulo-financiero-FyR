@@ -143,6 +143,10 @@ class Report(db.Model):
 
     # Los datos del informe general y de especiales se guardan como json
     general_data = db.Column(JsonComprimido, nullable=True)
+    # Versión "liviana" del informe para renderizar la página al instante:
+    # solo KPIs y tablas agregadas (sin las 235 mil filas). Se precalcula
+    # al guardar para no descargar 33 MB por cada visita.
+    page_data = db.Column(db.Text, nullable=True)
     especiales_data = db.Column(db.JSON, nullable=True)
 
     analisis_ejecutivo = db.Column(db.Text, nullable=True)

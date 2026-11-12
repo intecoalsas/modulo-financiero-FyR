@@ -1258,6 +1258,28 @@ def save_report_to_db(municipio, comercializadora, anio, mes,
         )
         db.session.add(report)
 
+    # Versión liviana para renderizar la página al instante (sin los 235 mil registros).
+    try:
+        from core.fyr import FYR_ORDEN, fyr_agregar
+        page_data = None
+        if general_data:
+            pd_copy = copy.deepcopy(general_data)
+            pd_copy.pop("facturacion", None)
+            pd_copy.pop("recaudo", None)
+            for k in ("f", "r"):
+                if isinstance(pd_copy.get(k), dict):
+                    pd_copy[k] = {kk: vv for kk, vv in pd_copy[k].items()
+                                  if kk != "registros"}
+            es_emsa = ((comercializadora or "").strip().lower() == "emsa"
+                       or (municipio or "").strip().lower() == "villavicencio")
+            if es_emsa:
+                pd_copy["fyr"] = fyr_agregar(
+                    general_data.get("facturacion"), general_data.get("recaudo"))
+                pd_copy["fyr_orden"] = list(FYR_ORDEN)
+            page_data = json.dumps(pd_copy, ensure_ascii=False, default=str)
+        report.page_data = page_data
+    except Exception:
+        report.page_data = None
     db.session.commit()
 
     # Se precalculan las alertas/anomalías del informe (idea #2) y el

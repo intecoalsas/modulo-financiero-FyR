@@ -1,5 +1,6 @@
 
 import os
+import json
 import uuid
 from datetime import datetime as _dt
 
@@ -908,17 +909,39 @@ def general():
 # Página del informe general de un reporte guardado (desde el historial)
 @bp.route("/general/<int:report_id>")
 def general_id(report_id):
-    report = Report.query.get_or_404(report_id)
-    general_data = report.general_data
-    if general_data is None:
+    from sqlalchemy.orm import load_only
+    report = (Report.query
+              .options(load_only(Report.id, Report.anio, Report.mes,
+                                 Report.comercializadora_id, Report.page_data))
+              .get_or_404(report_id))
+    # Se usa la versión liviana (page_data) para renderizar al instante.
+    # El blob completo (general_data) solo se carga al descargar Word/Excel.
+    page_data = None
+    if getattr(report, "page_data", None):
+        try:
+            page_data = json.loads(report.page_data)
+        except Exception:
+            page_data = None
+    if page_data is None:
+        page_data = report.general_data
+    if page_data is None:
         flash("Este reporte no tiene datos procesados.", "warning")
         return redirect(url_for("main.historial"))
-    DATA["general"] = general_data
-    es_emsa, fyr, fyr_orden = _contexto_fyr(
-        report.municipio_nombre, report.comercializadora_nombre, general_data)
-    return render_template("general.html", data=general_data, report_id=report_id,
-                           municipio=report.municipio_nombre,
-                           comercializadora=report.comercializadora_nombre,
+    municipio = report.municipio_nombre
+    comercializadora = report.comercializadora_nombre
+    es_emsa = ((comercializadora or "").strip().lower() == "emsa"
+               or (municipio or "").strip().lower() == "villavicencio")
+    # fyr y fyr_orden vienen precalculados en page_data; si no, se calculan.
+    fyr = page_data.get("fyr") if isinstance(page_data, dict) else None
+    fyr_orden = (page_data.get("fyr_orden") if isinstance(page_data, dict) else None)
+    if es_emsa and (fyr is None or not fyr_orden):
+        from core.fyr import FYR_ORDEN, fyr_agregar
+        fyr = fyr_agregar((report.general_data or {}).get("facturacion"),
+                           (report.general_data or {}).get("recaudo"))
+        fyr_orden = list(FYR_ORDEN)
+    return render_template("general.html", data=page_data, report_id=report_id,
+                           municipio=municipio,
+                           comercializadora=comercializadora,
                            periodo=f"{report.mes_nombre} {report.anio}",
                            es_emsa=es_emsa, fyr=fyr, fyr_orden=fyr_orden)
 

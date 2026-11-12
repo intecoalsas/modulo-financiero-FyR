@@ -89,11 +89,17 @@ from blueprints.routes import bp as main_bp
 app.register_blueprint(main_bp)
 
 # Variable que se le manda a todas las plantillas para saber si hay usuarios de San Pedro cargados
+_san_pedro_cache = {"valor": None, "ts": 0}
+
 def _contexto_global():
     try:
-        from models import Comercializadora, Municipio
-        sp = Municipio.query.filter_by(nombre="San Pedro").first()
-        tiene_sp = bool(sp and Comercializadora.query.filter_by(municipio_id=sp.id).first())
+        import time as _t
+        if _san_pedro_cache["valor"] is None or (_t.time() - _san_pedro_cache["ts"]) > 300:
+            from models import Comercializadora, Municipio
+            sp = Municipio.query.filter_by(nombre="San Pedro").first()
+            _san_pedro_cache["valor"] = bool(sp and Comercializadora.query.filter_by(municipio_id=sp.id).first())
+            _san_pedro_cache["ts"] = _t.time()
+        tiene_sp = _san_pedro_cache["valor"]
     except Exception:
         tiene_sp = False
     return {"san_pedro_activo": tiene_sp}
@@ -165,6 +171,8 @@ with app.app_context():
         db.session.execute(sa_text("ALTER TABLE reports ADD COLUMN conclusiones_ia TEXT"))
     if "explicaciones_ia" not in _cols:
         db.session.execute(sa_text("ALTER TABLE reports ADD COLUMN explicaciones_ia TEXT"))
+    if "page_data" not in _cols:
+        db.session.execute(sa_text("ALTER TABLE reports ADD COLUMN page_data TEXT"))
 
     # Lo misme para las comercializadoras
     _cols_com = [c["name"] for c in sa_inspect(db.engine).get_columns("comercializadoras")]
