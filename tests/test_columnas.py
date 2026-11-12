@@ -29,3 +29,47 @@ class TestResolverColumnas:
         headers = ["Id_cliente", "Nombre"]
         mapping, faltantes = resolver_columnas(["Id_cliente", "Nombre"], headers)
         assert len(set(mapping.keys())) == 2
+
+
+class TestFuzzyColumnas:
+    def test_nombres_cambiados_o_con_errata(self, app):
+        # "Impuesto de Alumbrado" no entra ni exacta ni por tokens
+        # (añade "de", le falta "Público"); "Estatro" es errata de "Estrato".
+        headers = ["Id_cliente", "Nombre", "Impuesto de Alumbrado",
+                   "Estatro Socioeconomico"]
+        mapping, faltantes = resolver_columnas(
+            ["monto_AP", "estrato_socioeconomico"], headers)
+        assert mapping.get("Impuesto de Alumbrado") == "monto_AP"
+        assert mapping.get("Estatro Socioeconomico") == "estrato_socioeconomico"
+        assert faltantes == []
+
+    def test_no_adivina_entre_dos_similares(self, app):
+        # Dos candidatas casi iguales: mejor preguntar que mapear mal.
+        headers = ["Impuesto de Alumbrado A", "Impuesto de Alumbrado B"]
+        mapping, faltantes = resolver_columnas(["monto_AP"], headers)
+        assert faltantes == ["monto_AP"]
+        assert mapping == {}
+
+    def test_nada_parecido_no_resuelve(self, app):
+        headers = ["Observaciones", "Comentarios varios"]
+        mapping, faltantes = resolver_columnas(["monto_AP"], headers)
+        assert faltantes == ["monto_AP"]
+
+    def test_fuzzy_aprende_el_alias(self, app):
+        from core.columnas import _aliases_columna
+        headers = ["Impuesto de Alumbrado"]
+        resolver_columnas(["monto_AP"], headers)
+        aprendidos = _aliases_columna("monto_AP")
+        assert any(_n(a) == _n("Impuesto de Alumbrado") for a in aprendidos)
+
+    def test_alias_aprendido_resuelve_exacto_despues(self, app):
+        headers = ["Impuesto de Alumbrado"]
+        resolver_columnas(["monto_AP"], headers)  # aprende
+        mapping, faltantes = resolver_columnas(["monto_AP"], headers)
+        assert mapping.get("Impuesto de Alumbrado") == "monto_AP"
+        assert faltantes == []
+
+
+def _n(s):
+    from core.columnas import _norm_col
+    return _norm_col(s)

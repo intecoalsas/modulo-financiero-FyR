@@ -1,10 +1,21 @@
 """Resolución de columnas: encuentra en los archivos subidos la columna que
 corresponde a cada dato (cliente, factura, consumo, recaudo, etc.).
-Usa aliases predefinidos y otros que se van aprendiendo de los archivos."""
+Usa aliases predefinidos y otros que se van aprendiendo de los archivos.
+
+Tres pasadas para resolver cada clave:
+  1. Exacta: el nombre completo normalizado (sin tildes ni símbolos).
+  2. Por tokens: todas las palabras del alias están en la columna real
+     (cubre renombres como "Impuesto de Alumbrado Público" -> añadió "de").
+  3. Fuzzy: nombres que cambiaron o llegan con erratas. Exige una
+     similitud alta y que la mejor sea claramente mejor que la segunda,
+     para no adivinar cuando dos columnas compiten. Si acierta, aprende
+     el alias nuevo para que la próxima carga resuelva exacta.
+"""
 
 import json
 import re
 import unicodedata
+from difflib import SequenceMatcher
 
 from models import MapeoColumna, db
 
@@ -165,7 +176,68 @@ def _resolver_una(clave, columnas_reales, excluidas=None):
                 coinciden.add(real)
         if len(coinciden) == 1:
             return coinciden.pop()
+
+    # Última pasada (fuzzy): la columna cambió de nombre o trae una errata.
+    # Solo se acepta si la similitud es alta y la mejor opción le saca
+    # margen a la segunda (nunca se adivina entre dos candidatas parecidas).
+    # Si acierta, se aprende el alias para que la próxima carga resuelva
+    # exacta y no vuelva a llegar al cuestionario.
+    real = _mejor_fuzzy(clave, reales)
+    if real:
+        try:
+            _guardar_alias_columna(clave, real)
+        except Exception:
+            db.session.rollback()
+        return real
     return None
+
+
+# Similitud 0..1 entre dos nombres de columna: la mayor entre la edición
+# de caracteres (SequenceMatcher) y el porcentaje de palabras compartidas
+# (Jaccard de tokens). Ambas sobre texto normalizado (sin tildes/símbolos).
+def _similitud(a, b):
+    na, nb = _norm_col(a), _norm_col(b)
+    if not na or not nb:
+        return 0.0
+    if na == nb:
+        return 1.0
+    ta, tb = _tokens(a), _tokens(b)
+    jac = len(ta & tb) / len(ta | tb) if (ta | tb) else 0.0
+    return max(SequenceMatcher(None, na, nb).ratio(), jac)
+
+
+# Umbral y margen del matching difuso. Altos a propósito: es mejor dejar la
+# clave como faltante (y que el cuestionario la pregunte) que mapear mal
+# una columna de datos de usuarios.
+FUZZ_MIN = 0.75     # similitud mínima entre la columna real y algún alias
+FUZZ_MARGEN = 0.06  # ventaja de la mejor sobre la segunda mejor
+
+
+def _mejor_fuzzy(clave, reales):
+    """La columna real más parecida a los aliases de `clave`, o None.
+
+    Puntúa TODAS las columnas reales contra los aliases de la clave y solo
+    devuelve la mejor si supera FUZZ_MIN y le saca FUZZ_MARGEN a la que le
+    sigue (si hay empate o casi-empate, no adivina). Puntuar todas evita
+    que una sola candidata que roza el umbral parezca 'única' cuando en
+    realidad compite con otra casi idéntica que quedó justo debajo.
+    """
+    aliases = list(_ALIASES_NORM.get(_norm_col(clave), []))
+    if _norm_col(clave) not in [_norm_col(a) for a in aliases]:
+        aliases.append(clave)
+    aliases += _aliases_columna(clave)
+
+    puntajes = []
+    for real in reales:
+        score = max((_similitud(alias, real) for alias in aliases),
+                    default=0.0)
+        puntajes.append((score, real))
+    puntajes.sort(key=lambda x: -x[0])
+    if not puntajes or puntajes[0][0] < FUZZ_MIN:
+        return None
+    if len(puntajes) >= 2 and (puntajes[0][0] - puntajes[1][0]) < FUZZ_MARGEN:
+        return None
+    return puntajes[0][1]
 
 
 # Resuelve todas las claves que se buscan: devuelve el mapeo
