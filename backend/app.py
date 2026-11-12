@@ -273,6 +273,61 @@ with app.app_context():
     db.session.commit()
 
 
+# ---------------------------------------------------------------------------
+# Precalentamiento al arrancar (solo con Turso). Con Turso cada consulta
+# cuesta ~0,13 s + una petición HTTP, y la primera además paga el TLS del
+# keep-alive: la primera visita de la mañana puede pasar de 1 s. Aquí se
+# abren la conexión y los cachés ANTES de que llegue el primer usuario:
+#   - SELECT 1: establece la conexión HTTP (httpx keep-alive)
+#   - municipios (_municipios_cache, TTL 5 min)
+#   - municipio más reciente e historial sin filtros (_hist_cache, TTL 5 min)
+#   - san_pedro_activo (contexto de todas las plantillas)
+# Corre en un hilo daemon: no bloquea el arranque del servidor. Se omite
+# en pruebas (INFORMES_TEST) y en SQLite local (no hay nada que calentar).
+# OJO: no se precarga el blob de /api/detalle (_detalle_cache): son 33 MB
+# que no se deben descargar si nadie abre esa pestaña.
+# ---------------------------------------------------------------------------
+_precalentar_flag = {"iniciado": False}
+
+
+def _precalentar():
+    if _precalentar_flag["iniciado"]:
+        return
+    _precalentar_flag["iniciado"] = True
+
+    import threading as _threading
+    import time as _time
+
+    def _trabajo():
+        inicio = _time.time()
+        try:
+            with app.app_context():
+                from sqlalchemy import text as _sa_text
+                from services.report_service import get_municipios
+                from blueprints.routes import _datos_historial, _muni_ultimo
+                # Conexión (TLS + keep-alive de Turso) con la consulta más barata
+                db.session.execute(_sa_text("SELECT 1"))
+                _contexto_global()               # caché de San Pedro
+                get_municipios()                 # municipios para los desplegables
+                _muni_ultimo()                   # municipio del último informe
+                _datos_historial(None, None, None)  # historial sin filtros
+            print(f"Precalentamiento listo en {_time.time() - inicio:.1f} s "
+                  f"(conexión, municipios e historial).")
+        except Exception as _exc:
+            print("Precalentamiento omitido (la app funciona igual):", _exc)
+        finally:
+            try:
+                db.session.remove()
+            except Exception:
+                pass
+
+    _threading.Thread(target=_trabajo, daemon=True, name="precalentar").start()
+
+
+if _db_url == "turso:///" and not os.environ.get("INFORMES_TEST"):
+    _precalentar()
+
+
 # Al ejecutar python app.py se enciende el servidor
 if __name__ == "__main__":
     app.run(debug=True)
