@@ -2,8 +2,15 @@
 # Funciones para consultar los municipios, comercializadoras y reportes
 # guardados en la base de datos.
 
-from sqlalchemy.orm import load_only
+from sqlalchemy.orm import load_only, joinedload
 from models import db, Municipio, Comercializadora, Report
+
+import time as _time
+from types import SimpleNamespace
+
+# Los municipios cambian muy poco: se cachean 5 minutos para no consultar
+# la BD en cada página (en Turso cada consulta cuesta ~0,5-1 s de ida y vuelta).
+_municipios_cache = {"valor": None, "ts": 0}
 
 
 MESES = ["", "Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio",
@@ -12,7 +19,14 @@ MESES = ["", "Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio",
 
 # Todos los municipios, ordenados por nombre
 def get_municipios():
-    return Municipio.query.order_by(Municipio.nombre).all()
+    if (_municipios_cache["valor"] is not None
+            and (_time.time() - _municipios_cache["ts"]) < 300):
+        return _municipios_cache["valor"]
+    filas = Municipio.query.order_by(Municipio.nombre).all()
+    datos = [SimpleNamespace(id=m.id, nombre=m.nombre) for m in filas]
+    _municipios_cache["valor"] = datos
+    _municipios_cache["ts"] = _time.time()
+    return datos
 
 
 # Comercializadoras de un municipio (o todas si no se pasa ninguno)
@@ -34,7 +48,9 @@ def get_all_reports(filtro_municipio=None, filtro_comerc=None, filtro_mes=None):
             Report.mes,
             Report.status,
             Report.created_at,
-        )
+        ),
+        # Evita N+1: trae la comercializadora y su municipio en la misma consulta
+        joinedload(Report.comercializadora).joinedload(Comercializadora.municipio),
     ).join(Comercializadora).join(Municipio)
     if filtro_municipio:
         q = q.filter(Municipio.nombre == filtro_municipio)

@@ -114,6 +114,7 @@ def _finalizar_carga_emsa(exogena_path, anio=None, mes=None, token=None):
             fact_path=os.path.abspath(exogena_path),
             rec_path=os.path.abspath(exogena_path),
         )
+        _hist_cache.clear()
         upsert_analisis_general(
             c_obj, anio, mes,
             consumo=general_data["f"]["total_consumo"],
@@ -186,6 +187,7 @@ def _finalizar_carga(municipio, comercializadora, anio, mes, fact_path, rec_path
             analisis_ejecutivo=analisis,
         )
         report_id = report.id
+        _hist_cache.clear()
     except Exception as exc:
         flash(f"Error al guardar en BD: {exc}", "danger")
         dest = url_for("main.index")
@@ -849,25 +851,35 @@ def procesar_metadatos(t):
 
 
 # Muestra el historial de reportes guardados, con filtros opcionales
+# Caché corto (30 s): la lista solo cambia al cargar/borrar un informe y en
+# Turso cada consulta cuesta ~1 s; así las visitas repetidas son instantáneas.
+_hist_cache = {}
+
+
+def _datos_historial(fm, fc, fmes):
+    clave = (fm, fc, fmes)
+    ahora = __import__("time").time()
+    if clave in _hist_cache and (ahora - _hist_cache[clave][0]) < 300:
+        return _hist_cache[clave][1], _hist_cache[clave][2]
+    reports = get_all_reports(filtro_municipio=fm, filtro_comerc=fc,
+                              filtro_mes=fmes)
+    con_especiales = {r_id for (r_id,) in
+                      db.session.query(Report.id)
+                      .filter(Report.especiales_data.isnot(None),
+                              ~Report.especiales_data.in_(['null', '{}', '[]', ''])).all()}
+    _hist_cache[clave] = (ahora, reports, con_especiales)
+    return reports, con_especiales
+
+
 @bp.route("/historial")
 def historial():
     filtro_municipio = request.args.get("municipio", "")
     filtro_comerc = request.args.get("comercializadora", "")
     filtro_mes = request.args.get("mes", "")
 
-    reports = get_all_reports(
-        filtro_municipio=filtro_municipio or None,
-        filtro_comerc=filtro_comerc or None,
-        filtro_mes=int(filtro_mes) if filtro_mes else None,
-    )
-    # Ids con informe de especiales (consulta liviana, sin traer los JSON):
-    # los municipios sin especiales (ej. Villavicencio/EMSA) no muestran
-    # esas acciones en el historial. Se excluyen NULL y textos vacíos
-    # ('null', '{}', ...) que equivalen a no tener especiales.
-    con_especiales = {r_id for (r_id,) in
-                      db.session.query(Report.id)
-                      .filter(Report.especiales_data.isnot(None),
-                              ~Report.especiales_data.in_(['null', '{}', '[]', ''])).all()}
+    reports, con_especiales = _datos_historial(
+        filtro_municipio or None, filtro_comerc or None,
+        int(filtro_mes) if filtro_mes else None)
     municipios = get_municipios()
     # Color distinto y notorio por municipio (estable aunque se filtre):
     # clases propias (badge-muni-*) que ningún override del tema apaga
@@ -899,8 +911,12 @@ def _contexto_fyr(municipio, comercializadora, general_data):
 # Página del informe general (usa el último reporte guardado en BD)
 @bp.route("/general")
 def general():
-    ultimo = Report.query.order_by(Report.updated_at.desc()).first()
-    if not ultimo or ultimo.general_data is None:
+    from sqlalchemy.orm import load_only
+    ultimo = (Report.query
+              .options(load_only(Report.id, Report.updated_at))
+              .filter(Report.general_data.isnot(None))
+              .order_by(Report.updated_at.desc()).first())
+    if not ultimo:
         flash("Primero debe cargar los archivos.", "warning")
         return redirect(url_for("main.index"))
     return redirect(url_for("main.general_id", report_id=ultimo.id))
@@ -949,8 +965,12 @@ def general_id(report_id):
 # Página del informe de especiales (usando el último reporte guardado)
 @bp.route("/especiales")
 def especiales():
-    ultimo = Report.query.order_by(Report.updated_at.desc()).first()
-    if not ultimo or ultimo.general_data is None:
+    from sqlalchemy.orm import load_only
+    ultimo = (Report.query
+              .options(load_only(Report.id, Report.updated_at))
+              .filter(Report.general_data.isnot(None))
+              .order_by(Report.updated_at.desc()).first())
+    if not ultimo:
         flash("Primero debe cargar los archivos.", "warning")
         return redirect(url_for("main.index"))
     return redirect(url_for("main.especiales_id", report_id=ultimo.id))
@@ -1567,6 +1587,7 @@ def eliminar_reporte(report_id):
              f"{report.municipio_nombre} / {report.comercializadora_nombre} — {report.mes_nombre} {report.anio} (reporte #{report_id})")
     db.session.delete(report)
     db.session.commit()
+    _hist_cache.clear()
     flash("Reporte eliminado correctamente.", "success")
     return redirect(url_for("main.historial"))
 

@@ -23,6 +23,26 @@ from datetime import date, datetime
 _URL = None
 _TOKEN = None
 
+# Cliente HTTP compartido con keep-alive: evita pagar el handshake TLS en
+# cada consulta (la diferencia es de ~1 s por query contra Turso).
+_http_client = None
+
+
+def _cliente_http():
+    global _http_client
+    if _http_client is None:
+        try:
+            import httpx
+            _http_client = httpx.Client(
+                timeout=300.0,
+                limits=httpx.Limits(max_keepalive_connections=20,
+                                    max_connections=50),
+                headers={"User-Agent": "informes-fyr/1.0"},
+            )
+        except Exception:
+            _http_client = False
+    return _http_client
+
 
 def configure(url, token):
     global _URL, _TOKEN
@@ -167,21 +187,34 @@ class Connection:
         if baton is not None:
             body["baton"] = baton
         data = json.dumps(body).encode("utf-8")
-        req = urllib.request.Request(
-            self.url + "/v2/pipeline", data=data, method="POST",
-            headers={
-                "Authorization": "Bearer " + self.token,
-                "Content-Type": "application/json",
-            },
-        )
-        try:
-            with urllib.request.urlopen(req, timeout=300) as resp:
-                raw = resp.read()
-        except urllib.error.HTTPError as exc:
-            msg = exc.read().decode("utf-8", "replace")
-            raise OperationalError(f"HTTP {exc.code}: {msg}") from exc
-        except Exception as exc:
-            raise OperationalError(str(exc)) from exc
+        headers = {
+            "Authorization": "Bearer " + self.token,
+            "Content-Type": "application/json",
+        }
+        cliente = _cliente_http()
+        if cliente:
+            try:
+                resp = cliente.post(self.url + "/v2/pipeline",
+                                    content=data, headers=headers)
+            except Exception as exc:
+                raise OperationalError(str(exc)) from exc
+            if resp.status_code >= 400:
+                raise OperationalError(
+                    f"HTTP {resp.status_code}: {resp.text[:300]}")
+            raw = resp.content
+        else:
+            req = urllib.request.Request(
+                self.url + "/v2/pipeline", data=data, method="POST",
+                headers=headers,
+            )
+            try:
+                with urllib.request.urlopen(req, timeout=300) as resp:
+                    raw = resp.read()
+            except urllib.error.HTTPError as exc:
+                msg = exc.read().decode("utf-8", "replace")
+                raise OperationalError(f"HTTP {exc.code}: {msg}") from exc
+            except Exception as exc:
+                raise OperationalError(str(exc)) from exc
         try:
             payload = json.loads(raw.decode("utf-8"))
         except Exception as exc:

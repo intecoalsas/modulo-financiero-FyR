@@ -25,18 +25,47 @@ app = Flask(
     static_folder=os.path.join(FRONTEND_DIR, "static"),
 )
 app.secret_key = os.environ.get("SECRET_KEY", "solo-desarrollo-cambiar-en-produccion")
+# Carga backend/.env en las variables de entorno (sin depender de dotenv).
+# Así `python app.py` y `flask run` usan la misma configuración (Turso, IA, etc.).
+def _cargar_env():
+    ruta = os.path.join(BASE_DIR, ".env")
+    try:
+        with open(ruta, "r", encoding="utf-8") as fh:
+            for linea in fh:
+                linea = linea.strip()
+                if not linea or linea.startswith("#") or "=" not in linea:
+                    continue
+                clave, _, valor = linea.partition("=")
+                clave = clave.strip()
+                valor = valor.strip().strip('"').strip("'")
+                if clave and clave not in os.environ:
+                    os.environ[clave] = valor
+    except OSError:
+        pass
+
+
+_cargar_env()
+
 # Producción (Turso/Postgres en la nube) o desarrollo (SQLite local).
+# DATABASE_URL tiene prioridad (las pruebas lo usan para apuntar a SQLite).
 _db_url = (os.environ.get("DATABASE_URL") or "").strip()
 if _db_url.startswith("postgres://"):
     _db_url = "postgresql+psycopg://" + _db_url[len("postgres://"):]
-# Turso (libSQL) se detecta por el esquema libsql:// o por TURSO_DATABASE_URL
+# Turso (libSQL): esquema libsql:// o TURSO_DATABASE_URL cuando no hay DATABASE_URL
 _turso_url = (os.environ.get("TURSO_DATABASE_URL") or "").strip()
-if _turso_url or _db_url.startswith("libsql://") or "turso.io" in _db_url:
-    if _db_url.startswith("libsql://"):
+if _db_url:
+    if _db_url.startswith("libsql://") or "turso.io" in _db_url:
         os.environ.setdefault("TURSO_DATABASE_URL", _db_url)
+        _db_url = "turso:///"
+elif _turso_url:
     _db_url = "turso:///"
 if not _db_url:
     _db_url = "sqlite:///" + os.path.join(BASE_DIR, "instance", "informes.db")
+# Candado: las pruebas NUNCA deben tocar la base real (Turso).
+if os.environ.get("INFORMES_TEST") and _db_url == "turso:///":
+    raise RuntimeError(
+        "Las pruebas no pueden usar Turso. Defina DATABASE_URL a una SQLite "
+        "de prueba antes de importar la app.")
 # La base de datos es un solo archivo sqlite que vive en backend/instance
 app.config["SQLALCHEMY_DATABASE_URI"] = _db_url
 app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
