@@ -1354,16 +1354,25 @@ def variacion_saldo_neg(report):
     if actual == 0:
         return None
 
-    # Se buscan los reportes de la misma comercializadora y se toma el anterior
-    prev = (Report.query
-            .filter(Report.comercializadora_id == report.comercializadora_id,
-                    Report.id != report.id)
-            .order_by(Report.anio.desc(), Report.mes.desc())
-            .all())
-    prev = [p for p in prev if (p.anio, p.mes) < (report.anio, report.mes) and p.especiales_data]
-    if not prev:
+    # Se busca SOLO el mes anterior de la misma comercializadora, filtrando y
+    # ordenando en la base de datos. Antes se traían todos los informes con
+    # .all() (cada uno con su blob de 33 MB): eso tardaba decenas de segundos.
+    from sqlalchemy import or_, and_
+    from sqlalchemy.orm import load_only
+    prev_fila = (Report.query
+                 .options(load_only(Report.id, Report.anio, Report.mes,
+                                    Report.especiales_data))
+                 .filter(Report.comercializadora_id == report.comercializadora_id,
+                         Report.id != report.id,
+                         Report.especiales_data.isnot(None),
+                         or_(Report.anio < report.anio,
+                             and_(Report.anio == report.anio,
+                                  Report.mes < report.mes)))
+                 .order_by(Report.anio.desc(), Report.mes.desc())
+                 .first())
+    if prev_fila is None or not prev_fila.especiales_data:
         return None
-    anterior = ((prev[0].especiales_data.get("totales") or {}).get("saldo_neg") or 0) * -1
+    anterior = ((prev_fila.especiales_data.get("totales") or {}).get("saldo_neg") or 0) * -1
     if anterior == 0:
         return None
     return (anterior - actual) / anterior * 100

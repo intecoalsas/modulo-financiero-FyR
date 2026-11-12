@@ -1,7 +1,9 @@
 
 import os
 import json
+import time
 import uuid
+from types import SimpleNamespace
 from datetime import datetime as _dt
 
 import pandas as pd
@@ -114,7 +116,7 @@ def _finalizar_carga_emsa(exogena_path, anio=None, mes=None, token=None):
             fact_path=os.path.abspath(exogena_path),
             rec_path=os.path.abspath(exogena_path),
         )
-        _hist_cache.clear()
+        _invalidar_cache()
         upsert_analisis_general(
             c_obj, anio, mes,
             consumo=general_data["f"]["total_consumo"],
@@ -187,7 +189,7 @@ def _finalizar_carga(municipio, comercializadora, anio, mes, fact_path, rec_path
             analisis_ejecutivo=analisis,
         )
         report_id = report.id
-        _hist_cache.clear()
+        _invalidar_cache()
     except Exception as exc:
         flash(f"Error al guardar en BD: {exc}", "danger")
         dest = url_for("main.index")
@@ -246,11 +248,9 @@ def _finalizar_carga(municipio, comercializadora, anio, mes, fact_path, rec_path
 @bp.route("/")
 def index():
     municipios = get_municipios()
-    # Municipio del último informe procesado (para adaptar los botones:
-    # Villavicencio/EMSA no tiene clientes especiales)
-    ultimo = Report.query.order_by(Report.updated_at.desc()).first()
-    muni_ultimo = (ultimo.comercializadora.municipio.nombre
-                   if ultimo and ultimo.comercializadora else "")
+    # Municipio del último informe (solo el nombre, con caché): los botones
+    # cambian según el municipio (Villavicencio/EMSA no tiene especiales).
+    muni_ultimo = _muni_ultimo()
     return render_template("index.html", cargado=CARGADO, municipios=municipios,
                            muni_ultimo=muni_ultimo)
 
@@ -854,19 +854,56 @@ def procesar_metadatos(t):
 # Caché corto (30 s): la lista solo cambia al cargar/borrar un informe y en
 # Turso cada consulta cuesta ~1 s; así las visitas repetidas son instantáneas.
 _hist_cache = {}
+_muni_ultimo_cache = {"valor": None, "ts": 0}
+
+
+def _invalidar_cache():
+    _hist_cache.clear()
+    _muni_ultimo_cache["valor"] = None
+
+
+def _muni_ultimo():
+    """Municipio del informe más reciente (caché de 5 min, se invalida al cargar)."""
+    ahora = time.time()
+    if _muni_ultimo_cache["valor"] is not None and (ahora - _muni_ultimo_cache["ts"]) < 300:
+        return _muni_ultimo_cache["valor"]
+    valor = (db.session.query(Municipio.nombre)
+             .join(Comercializadora, Comercializadora.municipio_id == Municipio.id)
+             .join(Report, Report.comercializadora_id == Comercializadora.id)
+             .order_by(Report.updated_at.desc())
+             .limit(1).scalar()) or ""
+    _muni_ultimo_cache["valor"] = valor
+    _muni_ultimo_cache["ts"] = ahora
+    return valor
 
 
 def _datos_historial(fm, fc, fmes):
     clave = (fm, fc, fmes)
-    ahora = __import__("time").time()
+    ahora = time.time()
     if clave in _hist_cache and (ahora - _hist_cache[clave][0]) < 300:
         return _hist_cache[clave][1], _hist_cache[clave][2]
-    reports = get_all_reports(filtro_municipio=fm, filtro_comerc=fc,
-                              filtro_mes=fmes)
-    con_especiales = {r_id for (r_id,) in
-                      db.session.query(Report.id)
-                      .filter(Report.especiales_data.isnot(None),
-                              ~Report.especiales_data.in_(['null', '{}', '[]', ''])).all()}
+    # Una sola consulta: informes + municipio + comercializadora + si tiene
+    # especiales (la marca se calcula en la base, sin traer los JSON).
+    tiene_esp = (Report.especiales_data.isnot(None)
+                 & ~Report.especiales_data.in_(['null', '{}', '[]', '']))
+    q = (db.session.query(Report.id, Report.anio, Report.mes, Report.created_at,
+                          tiene_esp.label("tiene_esp"),
+                          Municipio.nombre.label("muni"),
+                          Comercializadora.nombre.label("comerc"))
+         .join(Comercializadora, Report.comercializadora_id == Comercializadora.id)
+         .join(Municipio, Comercializadora.municipio_id == Municipio.id))
+    if fm:
+        q = q.filter(Municipio.nombre == fm)
+    if fc:
+        q = q.filter(Comercializadora.nombre == fc)
+    if fmes:
+        q = q.filter(Report.mes == fmes)
+    filas = q.order_by(Report.anio.desc(), Report.mes.desc()).all()
+    reports = [SimpleNamespace(
+        id=f.id, anio=f.anio, mes=f.mes, created_at=f.created_at,
+        mes_nombre=MESES[f.mes] if 1 <= f.mes <= 12 else str(f.mes),
+        municipio_nombre=f.muni, comercializadora_nombre=f.comerc) for f in filas]
+    con_especiales = {f.id for f in filas if f.tiene_esp}
     _hist_cache[clave] = (ahora, reports, con_especiales)
     return reports, con_especiales
 
@@ -979,7 +1016,14 @@ def especiales():
 # Página del informe de especiales de un reporte guardado
 @bp.route("/especiales/<int:report_id>")
 def especiales_id(report_id):
-    report = Report.query.get_or_404(report_id)
+    from sqlalchemy.orm import load_only
+    # Solo las columnas que usa esta página: nunca el blob general_data (33 MB)
+    report = (Report.query
+              .options(load_only(Report.id, Report.anio, Report.mes,
+                                 Report.comercializadora_id, Report.especiales_data,
+                                 Report.archivo_fact_path, Report.archivo_rec_path,
+                                 Report.analisis_ejecutivo, Report.novedades))
+              .get_or_404(report_id))
     especiales_data = report.especiales_data
     if especiales_data is None:
         flash("Este reporte no tiene datos de especiales.", "warning")
@@ -1059,7 +1103,11 @@ def guardar_analisis(report_id):
 # Preparar los datos de la página "Información de referencia" (análisis general,
 # tarifas y descripción por comercializadora y año)
 def _render_informacion_referencia(comercializadora=None, anio=None, tanio=None):
-    combos = Comercializadora.query.all()
+    from sqlalchemy.orm import joinedload
+    # joinedload: el municipio de cada comercializadora viene en la misma
+    # consulta (antes el template hacía una consulta por cada una)
+    combos = (Comercializadora.query
+              .options(joinedload(Comercializadora.municipio)).all())
     if not combos:
         flash("Primero debe cargar informes para ver la Informaci\u00f3n de Referencia por municipio.", "warning")
         return redirect(url_for("main.historial"))
@@ -1587,7 +1635,7 @@ def eliminar_reporte(report_id):
              f"{report.municipio_nombre} / {report.comercializadora_nombre} — {report.mes_nombre} {report.anio} (reporte #{report_id})")
     db.session.delete(report)
     db.session.commit()
-    _hist_cache.clear()
+    _invalidar_cache()
     flash("Reporte eliminado correctamente.", "success")
     return redirect(url_for("main.historial"))
 
