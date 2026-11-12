@@ -166,6 +166,11 @@ class Report(db.Model):
     word_gen_path = db.Column(db.String(500), nullable=True)
 
     status = db.Column(db.String(20), default="procesado")
+    # Depuración de espacio: True cuando el detalle de cuentas (las filas de
+    # facturación/recaudo de general_data) se eliminó por la regla de los
+    # últimos 6 informes. El resumen (page_data, especiales_data, resumen_mes,
+    # alertas) sigue intacto y la página sigue funcionando.
+    detalle_purged = db.Column(db.Boolean, default=False)
     created_at = db.Column(db.DateTime, default=ahora_utc)
     updated_at = db.Column(db.DateTime, default=ahora_utc, onupdate=ahora_utc)
 

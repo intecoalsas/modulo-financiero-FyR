@@ -122,7 +122,15 @@
     <div class="card border-0 shadow-sm mb-4">
       <div class="card-header bg-secondary text-white d-flex justify-content-between align-items-center">
         <h6 class="mb-0"><i class="bi bi-table"></i> Detalle de Cuentas Especiales</h6>
-        <span class="small text-white-50">Filtre por columna o busque valores con el icono de líneas; haga clic en el icono de nota para leer o escribir una novedad en un comentario. <span id="filaCount"></span></span>
+        <div class="d-flex align-items-center gap-2">
+          <a class="btn btn-sm btn-light" {% if report_id %}
+             href="{{ url_for('main.exportar', tipo='especiales', report_id=report_id) }}"
+             {% else %} href="{{ url_for('main.exportar', tipo='especiales') }}"{% endif %}
+             title="Excel con las columnas y datos de esta tabla">
+            <i class="bi bi-file-earmark-excel"></i> Descargar Excel
+          </a>
+          <span class="small text-white-50">Filtre por columna o busque valores con el icono de líneas; haga clic en el icono de nota para leer o escribir una novedad en un comentario. <span id="filaCount"></span></span>
+        </div>
       </div>
       <div class="card-body p-0" style="max-height:600px;overflow:auto;min-height:220px">
         <table class="table table-sm table-striped table-hover mb-0" style="font-size:0.82rem">

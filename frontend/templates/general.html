@@ -26,6 +26,11 @@
         </a>
         {% endif %}
         #}
+        {% if detalle_purged %}
+        <span class="badge bg-warning text-dark" title="El detalle de cuentas se depuró por la regla de los últimos 6 informes">
+          <i class="bi bi-scissors"></i> Detalle depurado
+        </span>
+        {% else %}
         {% if report_id %}
         <a href="{{ url_for('main.descargar_word', report_id=report_id, tipo='general') }}" class="btn btn-primary">
           <i class="bi bi-file-earmark-word"></i> Word General
@@ -34,6 +39,7 @@
         <a href="{{ url_for('main.descargar_word', tipo='general') }}" class="btn btn-primary">
           <i class="bi bi-file-earmark-word"></i> Word General
         </a>
+        {% endif %}
         {% endif %}
       </div>
     </div>
@@ -490,7 +496,26 @@
     <div class="card border-0 shadow-sm mb-4">
       <div class="card-header bg-secondary text-white d-flex justify-content-between align-items-center">
         <h6 class="mb-0"><i class="bi bi-table"></i> Detalle Cuentas</h6>
-        <span class="badge bg-light text-dark" id="genCount">… cuentas</span>
+        <div class="d-flex align-items-center gap-2">
+          {% if detalle_purged %}
+          <span class="small text-warning-emphasis" title="El detalle se depuró por la regla de los últimos 6 informes; el resumen del informe sigue guardado.">
+            <i class="bi bi-scissors"></i> Detalle depurado (respaldo en el Excel descargado antes)
+          </span>
+          {% else %}
+          {% if report_id %}
+          <a class="btn btn-sm btn-light" href="{{ url_for('main.descargar_detalle_excel', report_id=report_id) }}"
+             title="Excel con las columnas y datos de esta tabla (respaldo del detalle completo)">
+            <i class="bi bi-file-earmark-excel"></i> Descargar Excel
+          </a>
+          {% else %}
+          <a class="btn btn-sm btn-light" href="{{ url_for('main.descargar_detalle_excel') }}"
+             title="Excel con las columnas y datos de esta tabla (respaldo del detalle completo)">
+            <i class="bi bi-file-earmark-excel"></i> Descargar Excel
+          </a>
+          {% endif %}
+          {% endif %}
+          <span class="badge bg-light text-dark" id="genCount">… cuentas</span>
+        </div>
       </div>
       <div class="card-body p-0" style="max-height:500px;overflow:auto;min-height:220px">
         <table class="table table-sm table-striped table-hover mb-0" style="font-size:0.82rem">
@@ -503,7 +528,15 @@
             </tr>
           </thead>
           <tbody id="detailGenBody">
+            {% if detalle_purged %}
+            <tr><td colspan="9" class="text-center text-muted">
+              <i class="bi bi-scissors"></i> El detalle de cuentas de este informe fue depurado
+              (se conserva únicamente en los últimos 6 informes). El resumen del informe
+              sigue guardado en la plataforma.
+            </td></tr>
+            {% else %}
             <tr><td colspan="9" class="text-center text-muted">Cargando…</td></tr>
+            {% endif %}
           </tbody>
         </table>
       </div>
@@ -864,11 +897,20 @@ function paginador(cfg) {
 }
 
 const PAGS = {};
+{% if detalle_purged %}
+document.getElementById('detailGenBody').innerHTML =
+  '<tr><td colspan="9" class="text-center text-muted">Detalle depurado.</td></tr>';
+document.getElementById('pgInfoGen').textContent = 'Detalle depurado (últimos 6 informes)';
+document.getElementById('pgPrevGen').disabled = true;
+document.getElementById('pgNextGen').disabled = true;
+document.getElementById('genCount').textContent = 'Detalle depurado';
+{% else %}
 PAGS.gen = { tipo: 'cuentas', tabla: 'gen', cuerpo: 'detailGenBody',
   info: 'pgInfoGen', prev: 'pgPrevGen', next: 'pgNextGen', badge: 'genCount',
   cols: 9, fila: filaCuentas,
   labels: ['#', 'ID', 'Nombre', 'Clase', 'Sector', 'Imp. ($)', 'Cons. ($)', 'kWh', 'Valor Rec. ($)'] };
 paginador(PAGS.gen);
+{% endif %}
 
 // ---- Panel tipo Excel conectado al servidor (filtra TODO el reporte) ----
 const API_VAL = REPORT_ID ? '/api/valores/' + REPORT_ID : '/api/valores';

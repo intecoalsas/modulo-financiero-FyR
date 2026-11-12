@@ -347,6 +347,15 @@ def _filas_detalle(general_data, tipo):
     return (general_data or {}).get(tipo) or []
 
 
+def _report_purged(report_id):
+    """True si el detalle de cuentas de ese informe ya fue depurado."""
+    from sqlalchemy.orm import load_only
+    r = (Report.query
+         .options(load_only(Report.id, Report.detalle_purged))
+         .filter(Report.id == report_id).first())
+    return bool(r and r.detalle_purged)
+
+
 @bp.route("/api/detalle")
 @bp.route("/api/detalle/<int:report_id>")
 def api_detalle(report_id=None):
@@ -354,6 +363,9 @@ def api_detalle(report_id=None):
     tipo = request.args.get("tipo", "facturacion")
     if tipo not in _CAMPOS_DETALLE:
         tipo = "facturacion"
+    if report_id and _report_purged(report_id):
+        return jsonify({"error": "El detalle de cuentas de este informe fue "
+                                 "depurado (regla de los últimos 6 informes)."}), 410
     try:
         pagina = max(1, int(request.args.get("pagina", 1) or 1))
     except (TypeError, ValueError):
@@ -424,6 +436,75 @@ def api_detalle(report_id=None):
                     "filas": filas[ini:ini + por_pagina]})
 
 
+# Descarga el Excel con las columnas y datos de la tabla 'Detalle de
+# cuentas' (el respaldo del detalle completo). Sirve tanto para el informe
+# recién generado (en memoria) como para cualquier informe guardado. Es la
+# copia de seguridad ANTES de que la depuración de los 6 informes borre el
+# detalle: los informes depurados ya no ofrecen esta descarga.
+_ETIQUETAS_DETALLE = {
+    "Id_cliente": "ID", "Nombre": "Nombre", "Clase": "Clase", "Sector": "Sector",
+    "Periodicidad": "Periodicidad", "ImpuestoAP": "Imp. ($)",
+    "Consumo$": "Cons. ($)", "ConsumokWh": "kWh", "ValorAP": "Valor Rec. ($)",
+    "Estrato": "Estrato",
+}
+
+
+@bp.route("/api/detalle/excel")
+@bp.route("/api/detalle/excel/<int:report_id>")
+def descargar_detalle_excel(report_id=None):
+    from io import BytesIO
+    from sqlalchemy.orm import load_only
+    import openpyxl
+    tipo = request.args.get("tipo", "cuentas")
+    if tipo not in _CAMPOS_DETALLE:
+        tipo = "cuentas"
+    campos = [c for c in _CAMPOS_DETALLE[tipo] if c]
+
+    if report_id:
+        # Solo el id y el indicador de depurado (nunca el blob de 33 MB)
+        check = (Report.query
+                 .options(load_only(Report.id, Report.detalle_purged))
+                 .get_or_404(report_id))
+        if check.detalle_purged:
+            flash("El detalle de cuentas de este informe ya fue depurado "
+                  "(solo se conserva en los últimos informes).", "warning")
+            return redirect(url_for("main.general_id", report_id=report_id))
+        general_data = _datos_detalle(report_id)
+        fila_nom = (db.session.query(Report.anio, Report.mes,
+                                     Municipio.nombre, Comercializadora.nombre)
+                    .join(Comercializadora,
+                          Comercializadora.id == Report.comercializadora_id)
+                    .join(Municipio, Municipio.id == Comercializadora.municipio_id)
+                    .filter(Report.id == report_id).first())
+        anio, mes, muni, comerc = fila_nom if fila_nom else ("", "", "", "")
+        fname = (f"Detalle_Cuentas_{muni}_{comerc}_{anio}_{mes}.xlsx"
+                 .replace(" ", "_"))
+    else:
+        general_data = DATA.get("general") or {}
+        fname = "Detalle_Cuentas.xlsx"
+
+    filas = _filas_detalle(general_data, tipo)
+    if not filas:
+        flash("Este informe no tiene detalle de cuentas para descargar.", "warning")
+        dest = (url_for("main.general_id", report_id=report_id)
+                if report_id else url_for("main.general"))
+        return redirect(dest)
+
+    # write_only: escribe fila por fila sin cargar 235 mil celdas en memoria
+    wb = openpyxl.Workbook(write_only=True)
+    ws = wb.create_sheet("Detalle de cuentas")
+    ws.append(["#"] + [_ETIQUETAS_DETALLE.get(c, c) for c in campos])
+    for i, r in enumerate(filas, 1):
+        ws.append([i] + [r.get(c) for c in campos])
+    buf = BytesIO()
+    wb.save(buf)
+    buf.seek(0)
+    _auditar("descarga_detalle_excel", f"{fname} ({len(filas)} filas, tipo {tipo})")
+    return send_file(buf, mimetype="application/vnd.openxmlformats-officedocument"
+                                    ".spreadsheetml.sheet",
+                     as_attachment=True, download_name=fname)
+
+
 # Valores distintos de una columna para el panel de filtros tipo Excel.
 # Busca en TODAS las filas (q = texto a contener) y devuelve los primeros
 # con sus conteos, para que el panel funcione con reportes gigantes.
@@ -433,6 +514,9 @@ def api_valores(report_id=None):
     tipo = request.args.get("tipo", "facturacion")
     if tipo not in _CAMPOS_DETALLE:
         tipo = "facturacion"
+    if report_id and _report_purged(report_id):
+        return jsonify({"error": "El detalle de cuentas de este informe fue "
+                                 "depurado (regla de los últimos 6 informes)."}), 410
     try:
         col = int(request.args.get("col", -1))
     except (TypeError, ValueError):
@@ -1019,7 +1103,8 @@ def general_id(report_id):
     from sqlalchemy.orm import load_only
     report = (Report.query
               .options(load_only(Report.id, Report.anio, Report.mes,
-                                 Report.comercializadora_id, Report.page_data))
+                                 Report.comercializadora_id, Report.page_data,
+                                 Report.detalle_purged))
               .get_or_404(report_id))
     # Se usa la versión liviana (page_data) para renderizar al instante.
     # El blob completo (general_data) solo se carga al descargar Word/Excel.
@@ -1050,7 +1135,8 @@ def general_id(report_id):
                            municipio=municipio,
                            comercializadora=comercializadora,
                            periodo=f"{report.mes_nombre} {report.anio}",
-                           es_emsa=es_emsa, fyr=fyr, fyr_orden=fyr_orden)
+                           es_emsa=es_emsa, fyr=fyr, fyr_orden=fyr_orden,
+                           detalle_purged=bool(getattr(report, "detalle_purged", False)))
 
 
 # Página del informe de especiales (usando el último reporte guardado)
@@ -1546,17 +1632,38 @@ def cartera_cargar_referencia():
     return redirect(url_for("main.cartera", com=com.id, anio=anio))
 
 
-# Descarga el Excel del informe (general o especiales) que está en memoria
+# Descarga el Excel del informe (general o especiales) que está en memoria,
+# o el de un reporte guardado con /exportar/<tipo>/<id>
 @bp.route("/exportar/<tipo>")
-def exportar(tipo):
+@bp.route("/exportar/<tipo>/<int:report_id>")
+def exportar(tipo, report_id=None):
+    from sqlalchemy.orm import load_only
     if tipo == "general":
-        if DATA["general"] is None:
-            return redirect(url_for("main.index"))
-        path = exportar_general(DATA["general"], "informe_general.xlsx")
+        if report_id:
+            report = Report.query.get_or_404(report_id)
+            if getattr(report, "detalle_purged", False):
+                flash("El detalle de este informe fue depurado (regla de los "
+                      "últimos 6 informes) y el Excel no se puede regenerar.", "warning")
+                return redirect(url_for("main.general_id", report_id=report_id))
+            path = exportar_general(report.general_data,
+                                    f"informe_general_{report_id}.xlsx")
+        else:
+            if DATA["general"] is None:
+                return redirect(url_for("main.index"))
+            path = exportar_general(DATA["general"], "informe_general.xlsx")
     elif tipo == "especiales":
-        if DATA["especiales"] is None:
-            DATA["especiales"] = build_especiales(mes=DATA.get("mes", 7))
-        path = exportar_especiales(DATA["especiales"], "informe_especiales.xlsx")
+        if report_id:
+            report = (Report.query
+                      .options(load_only(Report.id, Report.especiales_data))
+                      .get_or_404(report_id))
+            especiales_data = report.especiales_data or build_especiales(
+                mes=report.mes)
+            path = exportar_especiales(especiales_data,
+                                       f"informe_especiales_{report_id}.xlsx")
+        else:
+            if DATA["especiales"] is None:
+                DATA["especiales"] = build_especiales(mes=DATA.get("mes", 7))
+            path = exportar_especiales(DATA["especiales"], "informe_especiales.xlsx")
     else:
         return redirect(url_for("main.index"))
     return send_from_directory(EXPORT_DIR, os.path.basename(path), as_attachment=True)
@@ -1568,6 +1675,12 @@ def exportar(tipo):
 def descargar_excel(report_id=None):
     if report_id:
         report = Report.query.get_or_404(report_id)
+        if getattr(report, "detalle_purged", False):
+            flash("El detalle de este informe fue depurado (regla de los "
+                  "últimos 6 informes) y el Excel profesional no se puede "
+                  "regenerar. El resumen sigue disponible en la página y el "
+                  "detalle está en el Excel de detalle descargado antes.", "warning")
+            return redirect(url_for("main.general_id", report_id=report_id))
         general_data = report.general_data
         especiales_data = report.especiales_data
         analisis_ejecutivo = report.analisis_ejecutivo
@@ -1599,6 +1712,11 @@ def descargar_word(report_id=None):
     # Datos del reporte guardado (si viene el id) o de lo que está en memoria
     if report_id:
         report = Report.query.get_or_404(report_id)
+        if tipo != "especiales" and getattr(report, "detalle_purged", False):
+            flash("El detalle de este informe fue depurado (regla de los "
+                  "últimos 6 informes) y el Word general no se puede "
+                  "regenerar. El resumen sigue disponible en la página.", "warning")
+            return redirect(url_for("main.general_id", report_id=report_id))
         general_data = report.general_data
         especiales_data = report.especiales_data
         analisis_ejecutivo = report.analisis_ejecutivo

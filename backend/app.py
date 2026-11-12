@@ -202,6 +202,8 @@ with app.app_context():
         db.session.execute(sa_text("ALTER TABLE reports ADD COLUMN explicaciones_ia TEXT"))
     if "page_data" not in _cols:
         db.session.execute(sa_text("ALTER TABLE reports ADD COLUMN page_data TEXT"))
+    if "detalle_purged" not in _cols:
+        db.session.execute(sa_text("ALTER TABLE reports ADD COLUMN detalle_purged BOOLEAN"))
 
     # Lo misme para las comercializadoras
     _cols_com = [c["name"] for c in sa_inspect(db.engine).get_columns("comercializadoras")]

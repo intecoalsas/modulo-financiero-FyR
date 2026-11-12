@@ -1311,7 +1311,74 @@ def save_report_to_db(municipio, comercializadora, anio, mes,
     except Exception:
         db.session.rollback()
 
+    # Depuración de espacio: el detalle de cuentas (las filas de
+    # facturación/recaudo) solo se conserva en los últimos 6 informes de
+    # esta comercializadora (CONSERVAR_DETALLES). Al llegar el informe nuevo,
+    # el más antiguo queda sin detalle pero con todo su resumen.
+    try:
+        depurar_detalles_antiguos(c)
+    except Exception:
+        db.session.rollback()
+
     return report
+
+
+# ---------------------------------------------------------------------------
+# Depuración de espacio: el detalle de cuentas (el blob general_data con las
+# ~235 mil filas de facturación/recaudo) solo se conserva en los últimos 6
+# informes mensuales de CADA comercializadora. Al guardar un informe nuevo
+# y existir 6 anteriores con detalle, el más antiguo se depura en automático
+# (la regla cuenta informes, no meses de calendario). Se elimina SOLO el
+# detalle: page_data (resumen), especiales_data, resumen_mes, alertas,
+# análisis ejecutivo y cartera siguen intactos. La cantidad de informes se
+# ajusta con CONSERVAR_DETALLES en .env (por defecto 6).
+# ---------------------------------------------------------------------------
+def _conservar_detalles():
+    try:
+        return max(1, int(os.environ.get("CONSERVAR_DETALLES", "6")))
+    except (TypeError, ValueError):
+        return 6
+
+
+def _report_con_detalle_ids(comercializadora):
+    """Ids (del más nuevo al más viejo) de los informes que AÚN tienen
+    detalle de cuentas de una comercializadora."""
+    from sqlalchemy.orm import load_only
+    q = (Report.query
+         .options(load_only(Report.id))
+         .filter(Report.comercializadora_id == comercializadora.id,
+                 Report.general_data.isnot(None)))
+    return [r.id for r in q.order_by(Report.anio.desc(), Report.mes.desc(),
+                                     Report.id.desc()).all()]
+
+
+def depurar_detalles_antiguos(comercializadora=None):
+    """Depura el detalle de los informes que queden fuera de los últimos N.
+
+    Devuelve la lista de ids depurados. La llama save_report_to_db (al
+    guardar cada informe) y el script scripts/depurar_detalles.py (para
+    depurar de una vez los informes que ya existen).
+    """
+    conservar = _conservar_detalles()
+    if comercializadora is not None:
+        ids_con_detalle = _report_con_detalle_ids(comercializadora)
+    else:
+        from models import Comercializadora
+        ids_con_detalle = []
+        for com in Comercializadora.query.order_by(Comercializadora.nombre).all():
+            ids_con_detalle += _report_con_detalle_ids(com)
+    viejos = ids_con_detalle[conservar:]
+    if not viejos:
+        return []
+    # UPDATE directo por ids: así nunca se descarga el blob que se va a borrar
+    (Report.query
+     .filter(Report.id.in_(viejos), Report.general_data.isnot(None))
+     .update({Report.general_data: None, Report.detalle_purged: True},
+             synchronize_session=False))
+    db.session.commit()
+    print(f"Depurado el detalle de {len(viejos)} informe(s) fuera de los últimos "
+          f"{conservar} con detalle (ids: {viejos}).")
+    return viejos
 
 
 # Arma el texto del análisis ejecutivo para el informe.
