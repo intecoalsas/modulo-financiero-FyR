@@ -311,6 +311,7 @@ def _precalentar():
                 get_municipios()                 # municipios para los desplegables
                 _muni_ultimo()                   # municipio del último informe
                 _datos_historial(None, None, None)  # historial sin filtros
+                _precargar_cartera_sp()          # cartera de San Pedro si está vacía
             print(f"Precalentamiento listo en {_time.time() - inicio:.1f} s "
                   f"(conexión, municipios e historial).")
         except Exception as _exc:
@@ -324,8 +325,69 @@ def _precalentar():
     _threading.Thread(target=_trabajo, daemon=True, name="precalentar").start()
 
 
+# ---------------------------------------------------------------------------
+# Precarga de la cartera de San Pedro: si la cartera acumulada está vacía
+# (ambiente nuevo o BD restaurada sin cartera) y existe el libro de
+# referencia "Clientes Especiales SP 2026.xlsx", se carga sola al arrancar
+# y no hace falta subirla a mano por /cartera. La ruta se indica con
+# CARTERA_REFERENCIA en .env; si no, se toma el .xlsx más nuevo dentro de
+# backend/uploads/referencia/. NUNCA toca una cartera que ya tiene años
+# cargados; si algo falla, la app arranca igual (queda el camino manual).
+# ---------------------------------------------------------------------------
+def _precargar_cartera_sp():
+    """Abre su propio app_context si no hay uno (el arranque a nivel de
+    módulo corre fuera de contexto; el precalentamiento ya trae el suyo)."""
+    if os.environ.get("INFORMES_TEST"):
+        return
+    from flask import has_app_context
+    if has_app_context():
+        return _precargar_cartera_trabajo()
+    with app.app_context():
+        return _precargar_cartera_trabajo()
+
+
+def _precargar_cartera_trabajo():
+    try:
+        from models import Comercializadora, Municipio
+        from core.core import (cargar_cartera_desde_referencia,
+                               carteras_anios, ANIO_BASE_CARTERA)
+        sp = Municipio.query.filter(Municipio.nombre.ilike("San Pedro")).first()
+        if not sp:
+            return
+        com = Comercializadora.query.filter_by(municipio_id=sp.id).first()
+        if not com or carteras_anios(com):
+            return  # ya tiene cartera cargada: no se toca nada
+
+        ruta = (os.environ.get("CARTERA_REFERENCIA") or "").strip().strip('"')
+        if not ruta:
+            carpeta = os.path.join(UPLOAD_DIR, "referencia")
+            if os.path.isdir(carpeta):
+                candidatos = sorted(
+                    (os.path.join(carpeta, f) for f in os.listdir(carpeta)
+                     if f.lower().endswith((".xlsx", ".xls"))),
+                    key=os.path.getmtime, reverse=True)
+                ruta = candidatos[0] if candidatos else ""
+        if not ruta or not os.path.isfile(ruta):
+            print("Cartera SP vacía y sin libro de referencia "
+                  "(CARTERA_REFERENCIA en .env o backend/uploads/referencia/). "
+                  "Se puede cargar a mano en /cartera.")
+            return
+        cargar_cartera_desde_referencia(com, ruta, ANIO_BASE_CARTERA)
+        print("Cartera de San Pedro precargada desde:", os.path.basename(ruta))
+    except Exception as exc:
+        try:
+            db.session.rollback()
+        except Exception:
+            pass
+        print("Precarga de cartera omitida (se puede cargar a mano en /cartera):", exc)
+
+
 if _db_url == "turso:///" and not os.environ.get("INFORMES_TEST"):
     _precalentar()
+elif _db_url.startswith("sqlite") and not os.environ.get("INFORMES_TEST"):
+    # En SQLite local no hace falta precalentar nada, pero la cartera de
+    # San Pedro vacía sí se auto-carga (retorna al instante si ya existe).
+    _precargar_cartera_sp()
 
 
 # Al ejecutar python app.py se enciende el servidor
