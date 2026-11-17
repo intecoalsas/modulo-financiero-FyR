@@ -205,6 +205,13 @@ with app.app_context():
     if "detalle_purged" not in _cols:
         db.session.execute(sa_text("ALTER TABLE reports ADD COLUMN detalle_purged BOOLEAN"))
 
+    # Índice para /general y /especiales (orden por updated_at)
+    try:
+        db.session.execute(sa_text(
+            "CREATE INDEX IF NOT EXISTS ix_report_updated_at ON reports (updated_at)"))
+    except Exception:
+        pass
+
     # Lo misme para las comercializadoras
     _cols_com = [c["name"] for c in sa_inspect(db.engine).get_columns("comercializadoras")]
     if "info_especiales" not in _cols_com:

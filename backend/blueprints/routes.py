@@ -286,7 +286,11 @@ _CAMPOS_DETALLE = {
 # seguidas (paginación, filtros); sin esto cada una re-descargaría y
 # re-descomprimiría los 33 MB del blob. Se invalida al cargar/borrar un
 # informe (_invalidar_cache) y expira a los 10 minutos por si acaso.
+# El candado evita que varias peticiones concurrentes descarguen el blob
+# a la vez (thundering herd): la primera llena la caché y las demás
+# esperan y la reutilizan.
 _detalle_cache = {"report_id": None, "datos": None, "ts": 0}
+_detalle_cache_lock = __import__("threading").Lock()
 
 
 def _datos_detalle(report_id):
@@ -296,13 +300,19 @@ def _datos_detalle(report_id):
     if (c["report_id"] == report_id and c["datos"] is not None
             and (ahora - c["ts"]) < 600):
         return c["datos"]
-    from sqlalchemy.orm import load_only
-    report = (Report.query
-              .options(load_only(Report.id, Report.general_data))
-              .get_or_404(report_id))
-    datos = report.general_data or {}
-    c.update(report_id=report_id, datos=datos, ts=ahora)
-    return datos
+    with _detalle_cache_lock:
+        # Doble chequeo: otro hilo pudo llenar la caché mientras esperábamos
+        ahora = time.time()
+        if (c["report_id"] == report_id and c["datos"] is not None
+                and (ahora - c["ts"]) < 600):
+            return c["datos"]
+        from sqlalchemy.orm import load_only
+        report = (Report.query
+                  .options(load_only(Report.id, Report.general_data))
+                  .get_or_404(report_id))
+        datos = report.general_data or {}
+        c.update(report_id=report_id, datos=datos, ts=time.time())
+        return datos
 
 
 # Une facturación y recaudo en una sola fila por cuenta (listado único)
@@ -1170,13 +1180,18 @@ def especiales():
 # Página del informe de especiales de un reporte guardado
 @bp.route("/especiales/<int:report_id>")
 def especiales_id(report_id):
-    from sqlalchemy.orm import load_only
+    from sqlalchemy.orm import load_only, joinedload
     # Solo las columnas que usa esta página: nunca el blob general_data (33 MB)
     report = (Report.query
               .options(load_only(Report.id, Report.anio, Report.mes,
                                  Report.comercializadora_id, Report.especiales_data,
                                  Report.archivo_fact_path, Report.archivo_rec_path,
-                                 Report.analisis_ejecutivo, Report.novedades))
+                                 Report.analisis_ejecutivo, Report.novedades),
+                       # La comercializadora (con su cartera) y el municipio
+                       # en la misma consulta: evita 2 lazy loads más abajo
+                       joinedload(Report.comercializadora)
+                       .joinedload(Comercializadora.municipio)
+                       .load_only(Municipio.nombre))
               .get_or_404(report_id))
     especiales_data = report.especiales_data
     if especiales_data is None:
@@ -1274,6 +1289,10 @@ def _render_informacion_referencia(comercializadora=None, anio=None, tanio=None)
 
     if comercializadora is None:
         comercializadora = combos[0]
+    # Los JSON pesados de la seleccionada (tarifas, descripcion,
+    # analisis_general, info_especiales) en UNA sola consulta: leerlos como
+    # columnas diferidas costaría 1 consulta HTTP por cada uno.
+    db.session.expire(comercializadora)
 
     folders = get_analisis_general_folders(comercializadora)
     anios = sorted((int(k) for k in folders if str(k).isdigit()), reverse=True)

@@ -6,6 +6,7 @@ import json
 from datetime import datetime, timedelta
 from flask_sqlalchemy import SQLAlchemy
 from sqlalchemy.types import Text, TypeDecorator
+from sqlalchemy import Index
 
 # Objeto que conecta la app con la base de datos (crea las tablas, consultas, etc.)
 db = SQLAlchemy()
@@ -180,6 +181,8 @@ class Report(db.Model):
     __table_args__ = (
         db.UniqueConstraint("comercializadora_id", "anio", "mes", name="uq_report_periodo"),
         db.Index("ix_report_period", "anio", "mes"),
+        # /general y /especiales ordenan por updated_at para el último informe
+        db.Index("ix_report_updated_at", "updated_at"),
     )
 
     # "7" -> "Julio", sirve para mostrar el mes con nombre en las plantillas
