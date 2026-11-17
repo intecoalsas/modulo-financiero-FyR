@@ -135,3 +135,41 @@ class TestPaginaGeneralDepurada:
         assert resp.status_code == 200
         html = resp.get_data(as_text=True)
         assert "Detalle depurado" in html or "detalle fue depurado" in html
+
+
+class TestCacheUnionCuentas:
+    def test_union_se_calcula_una_vez_por_informe(self, app, client, monkeypatch):
+        from blueprints import routes
+        r = _guardar("San Pedro", "Celsia", 2026, 7)
+        llamadas = {"n": 0}
+        original = routes._unir_cuentas
+
+        def contador(f, rr):
+            llamadas["n"] += 1
+            return original(f, rr)
+
+        monkeypatch.setattr(routes, "_unir_cuentas", contador)
+        assert client.get(f"/api/detalle/{r.id}?tipo=cuentas&pagina=1&por_pagina=50").status_code == 200
+        primera = llamadas["n"]
+        assert primera == 1
+        # Cambio de pagina: la union sale de la cache (cero recorridos nuevos)
+        client.get(f"/api/detalle/{r.id}?tipo=cuentas&pagina=2&por_pagina=50")
+        assert llamadas["n"] == primera
+        # /api/valores tambien reutiliza la union cacheada
+        client.get(f"/api/valores/{r.id}?tipo=cuentas&col=1")
+        assert llamadas["n"] == primera
+        # Otro tipo (facturacion) usa el blob directo, sin tocar la union
+        client.get(f"/api/detalle/{r.id}?tipo=facturacion&pagina=1&por_pagina=50")
+        assert llamadas["n"] == primera
+        # Cambiar de informe invalida la union cacheada
+        r2 = _guardar("San Pedro", "Celsia", 2026, 8)
+        client.get(f"/api/detalle/{r2.id}?tipo=cuentas&pagina=1&por_pagina=50")
+        assert llamadas["n"] == primera + 1
+
+    def test_invalidar_cache_limpia_la_union(self, app, client):
+        from blueprints import routes
+        r = _guardar("San Pedro", "Celsia", 2026, 7)
+        client.get(f"/api/detalle/{r.id}?tipo=cuentas&pagina=1&por_pagina=50")
+        routes._invalidar_cache()
+        assert routes._detalle_cache["cuentas"] is None
+        assert routes._detalle_cache["datos"] is None

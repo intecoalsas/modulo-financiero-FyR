@@ -286,10 +286,13 @@ _CAMPOS_DETALLE = {
 # seguidas (paginación, filtros); sin esto cada una re-descargaría y
 # re-descomprimiría los 33 MB del blob. Se invalida al cargar/borrar un
 # informe (_invalidar_cache) y expira a los 10 minutos por si acaso.
+# "cuentas" guarda la unión de facturación+recaudo YA HECHA (_unir_cuentas
+# recorre ~235 mil filas en Python: si se repitiera en cada clic, cada
+# paginación/filtro tardaría 1-3 s). Se calcula una vez por informe.
 # El candado evita que varias peticiones concurrentes descarguen el blob
 # a la vez (thundering herd): la primera llena la caché y las demás
 # esperan y la reutilizan.
-_detalle_cache = {"report_id": None, "datos": None, "ts": 0}
+_detalle_cache = {"report_id": None, "datos": None, "cuentas": None, "ts": 0}
 _detalle_cache_lock = __import__("threading").Lock()
 
 
@@ -311,8 +314,27 @@ def _datos_detalle(report_id):
                   .options(load_only(Report.id, Report.general_data))
                   .get_or_404(report_id))
         datos = report.general_data or {}
-        c.update(report_id=report_id, datos=datos, ts=time.time())
+        c.update(report_id=report_id, datos=datos, cuentas=None, ts=time.time())
         return datos
+
+
+def _filas_de_reporte(report_id, tipo):
+    """Filas de la tabla para un tipo. Para 'cuentas' reutiliza la unión
+    ya calculada en caché (el blob también está en caché, así que el
+    segundo clic de paginación/filtro no recorre las 235 mil filas)."""
+    if tipo != "cuentas":
+        return _filas_detalle(_datos_detalle(report_id), tipo)
+    c = _detalle_cache
+    _datos_detalle(report_id)  # garantiza el blob cargado y el sello de tiempo
+    if c["report_id"] == report_id and c.get("cuentas") is not None:
+        return c["cuentas"]
+    with _detalle_cache_lock:
+        if c["report_id"] == report_id and c.get("cuentas") is not None:
+            return c["cuentas"]
+        filas = _unir_cuentas((c["datos"] or {}).get("facturacion"),
+                              (c["datos"] or {}).get("recaudo"))
+        c["cuentas"] = filas
+        return filas
 
 
 # Une facturación y recaudo en una sola fila por cuenta (listado único)
@@ -393,10 +415,9 @@ def api_detalle(report_id=None):
         filtros = {}
 
     if report_id:
-        general_data = _datos_detalle(report_id)
+        filas = _filas_de_reporte(report_id, tipo)
     else:
-        general_data = DATA.get("general") or {}
-    filas = _filas_detalle(general_data, tipo)
+        filas = _filas_detalle(DATA.get("general") or {}, tipo)
     campos = _CAMPOS_DETALLE[tipo]
 
     # Filtro por columna: el texto debe estar contenido en el valor
@@ -542,10 +563,9 @@ def api_valores(report_id=None):
         return jsonify({"valores": [], "total": 0})
 
     if report_id:
-        general_data = _datos_detalle(report_id)
+        filas = _filas_de_reporte(report_id, tipo)
     else:
-        general_data = DATA.get("general") or {}
-    filas = _filas_detalle(general_data, tipo)
+        filas = _filas_detalle(DATA.get("general") or {}, tipo)
     campo = campos[col]
 
     from collections import Counter
@@ -1006,7 +1026,7 @@ _muni_ultimo_cache = {"valor": None, "ts": 0}
 def _invalidar_cache():
     _hist_cache.clear()
     _muni_ultimo_cache["valor"] = None
-    _detalle_cache.update(report_id=None, datos=None, ts=0)
+    _detalle_cache.update(report_id=None, datos=None, cuentas=None, ts=0)
 
 
 def _muni_ultimo():
