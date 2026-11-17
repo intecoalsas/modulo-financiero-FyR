@@ -4,7 +4,7 @@ services:
     name: sistema-informes-fyr
     runtime: python
     buildCommand: pip install -r backend/requirements.txt
-    startCommand: gunicorn app:app --workers 1 --timeout 120 --chdir backend
+    startCommand: gunicorn app:app --workers 1 --threads 4 --timeout 120 --chdir backend
     envVars:
       - key: FLASK_ENV
         value: production

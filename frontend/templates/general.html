@@ -881,7 +881,7 @@ function paginador(cfg) {
     const e = {};
     Object.keys(estado.exact).forEach(c => { e[c] = Array.from(estado.exact[c]); });
     fetch(API_DET + '?tipo=' + cfg.tipo + '&pagina=' + estado.pagina +
-          '&por_pagina=10000&e=' + encodeURIComponent(JSON.stringify(e)))
+          '&por_pagina=1000&e=' + encodeURIComponent(JSON.stringify(e)))
       .then(r => r.json())
       .then(pintar)
       .catch(() => { info.textContent = 'Error al cargar. Reintente.'; });

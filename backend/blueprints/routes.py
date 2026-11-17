@@ -555,19 +555,24 @@ def api_valores(report_id=None):
 @bp.route("/api/analisis-ia", methods=["POST"])
 @limiter.limit("10 per minute")
 def analisis_ia():
-    from sqlalchemy.orm import load_only
+    from sqlalchemy.orm import load_only, joinedload
     from core.ia_analisis import armar_contexto, generar_analisis
     body = request.get_json(silent=True) or {}
     report_id = body.get("report_id")
     cols = (Report.id, Report.anio, Report.mes, Report.comercializadora_id,
             Report.page_data)
+    joins_nombres = (joinedload(Report.comercializadora)
+                     .load_only(Comercializadora.nombre,
+                                Comercializadora.municipio_id)
+                     .joinedload(Comercializadora.municipio)
+                     .load_only(Municipio.nombre))
     if report_id:
         report = (Report.query
-                  .options(load_only(*cols))
+                  .options(load_only(*cols), joins_nombres)
                   .get_or_404(report_id))
     else:
         report = (Report.query
-                  .options(load_only(*cols))
+                  .options(load_only(*cols), joins_nombres)
                   .order_by(Report.updated_at.desc()).first())
     if report is None:
         return jsonify({"error": "No hay informe cargado."}), 404
@@ -1100,11 +1105,20 @@ def general():
 # Página del informe general de un reporte guardado (desde el historial)
 @bp.route("/general/<int:report_id>")
 def general_id(report_id):
-    from sqlalchemy.orm import load_only
+    from sqlalchemy.orm import load_only, joinedload
     report = (Report.query
               .options(load_only(Report.id, Report.anio, Report.mes,
                                  Report.comercializadora_id, Report.page_data,
-                                 Report.detalle_purged))
+                                 Report.detalle_purged),
+                       # Los nombres salen en la misma consulta: así
+                       # municipio_nombre no dispara 2 lazy loads que
+                       # arrastran todos los JSON de la comercializadora
+                       # (cartera_acumulada, tarifas, descripcion...).
+                       joinedload(Report.comercializadora)
+                       .load_only(Comercializadora.nombre,
+                                  Comercializadora.municipio_id)
+                       .joinedload(Comercializadora.municipio)
+                       .load_only(Municipio.nombre))
               .get_or_404(report_id))
     # Se usa la versión liviana (page_data) para renderizar al instante.
     # El blob completo (general_data) solo se carga al descargar Word/Excel.
@@ -1243,11 +1257,17 @@ def guardar_analisis(report_id):
 # Preparar los datos de la página "Información de referencia" (análisis general,
 # tarifas y descripción por comercializadora y año)
 def _render_informacion_referencia(comercializadora=None, anio=None, tanio=None):
-    from sqlalchemy.orm import joinedload
-    # joinedload: el municipio de cada comercializadora viene en la misma
-    # consulta (antes el template hacía una consulta por cada una)
+    from sqlalchemy.orm import joinedload, load_only
+    # El combo solo necesita id y nombre (con el municipio en la misma
+    # consulta): load_only evita arrastrar los JSON grandes de TODAS las
+    # comercializadoras (cartera_acumulada, tarifas, descripcion...). Las
+    # columnas pesadas de la seleccionada se cargan aparte, 1 sola fila.
     combos = (Comercializadora.query
-              .options(joinedload(Comercializadora.municipio)).all())
+              .options(load_only(Comercializadora.id, Comercializadora.nombre,
+                                 Comercializadora.municipio_id),
+                       joinedload(Comercializadora.municipio)
+                       .load_only(Municipio.id, Municipio.nombre))
+              .all())
     if not combos:
         flash("Primero debe cargar informes para ver la Informaci\u00f3n de Referencia por municipio.", "warning")
         return redirect(url_for("main.historial"))
