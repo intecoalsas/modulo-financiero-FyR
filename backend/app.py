@@ -100,6 +100,16 @@ if os.environ.get("FLASK_ENV") == "production":
     Talisman(app, force_https=True, frame_options="SAMEORIGIN",
              content_security_policy=_csp)
 
+# Los estáticos (style.css, filter_widget.js) viajan en cada página: sin
+# caché el navegador los re-descarga en cada pestaña. Los templates ya los
+# versionan con ?v=... (base.html, cartera/especiales.html), así que 1 día
+# de caché no sirve archivos viejos: al cambiar el archivo se sube la ?v=.
+@app.after_request
+def _cache_estaticos(respuesta):
+    if request.path.startswith(app.static_url_path + "/"):
+        respuesta.headers["Cache-Control"] = "public, max-age=86400"
+    return respuesta
+
 # Se registra el dialecto de Turso si se va a usar
 if _db_url == "turso:///":
     from core.turso_dialect import register as _reg_turso
@@ -397,6 +407,69 @@ elif _db_url.startswith("sqlite") and not os.environ.get("INFORMES_TEST"):
     # En SQLite local no hace falta precalentar nada, pero la cartera de
     # San Pedro vacía sí se auto-carga (retorna al instante si ya existe).
     _precargar_cartera_sp()
+
+
+# ---------------------------------------------------------------------------
+# Keep-alive anti "cold start": en el plan gratuito de Render la app se apaga
+# tras ~15 min sin tráfico y la siguiente visita espera ~1 min. Este hilo
+# visita /salud (200 al instante, SIN tocar la base de datos) cada 14 min
+# SOLO dentro de una ventana horaria: la app duerme de noche y no consume
+# horas extra del plan. Las horas se interpretan en hora de Colombia
+# (Render corre en UTC, se restan las 5 horas de la diferencia).
+# Configuración en .env (todo opcional):
+#   KEEP_ALIVE_URL   URL pública de la app. Por defecto toma la variable
+#                    RENDER_EXTERNAL_URL que Render define solo. Vacío u
+#                    "off" desactiva el hilo (en local no hay URL y no corre).
+#   KEEP_ALIVE_HORAS Ventana despierta: "6-20" = 6:00 a 19:59 (Colombia).
+#   KEEP_ALIVE_DIAS  Días de la semana: 1=lunes ... 7=domingo. "1-6" =
+#                    lunes a sábado (por defecto).
+# OJO: si la app ya está dormida al empezar la ventana, nadie la despierta
+# (el hilo vive dentro de la app). Solo afecta a la primera visita de la
+# jornada; para arrancarla a una hora fija sirve un ping externo a /salud.
+# ---------------------------------------------------------------------------
+def _keep_alive():
+    url = (os.environ.get("KEEP_ALIVE_URL")
+           or os.environ.get("RENDER_EXTERNAL_URL") or "").strip().rstrip("/")
+    if not url or url.lower() == "off" or os.environ.get("INFORMES_TEST"):
+        return
+
+    import threading as _threading
+    import time as _time
+    import urllib.request as _urllib_req
+
+    def _rango(txt, lo, hi):
+        a, _, b = (txt or "").partition("-")
+        try:
+            ini = max(lo, int(a))
+        except ValueError:
+            ini = lo
+        try:
+            fin = min(hi, int(b))
+        except ValueError:
+            fin = hi
+        return ini, fin
+
+    h_ini, h_fin = _rango(os.environ.get("KEEP_ALIVE_HORAS", "6-20"), 0, 24)
+    d_ini, d_fin = _rango(os.environ.get("KEEP_ALIVE_DIAS", "1-6"), 1, 7)
+
+    def _trabajo():
+        while True:
+            try:
+                # Hora de Colombia = UTC - 5; tm_wday: 0=lunes -> 1..7
+                ahora = _time.gmtime()
+                hora_col = (ahora.tm_hour - 5) % 24
+                dia = ahora.tm_wday + 1
+                if d_ini <= dia <= d_fin and h_ini <= hora_col < h_fin:
+                    _urllib_req.urlopen(url + "/salud", timeout=30).read()
+            except Exception as _exc:
+                print("Keep-alive: ping falló:", _exc)
+            _time.sleep(14 * 60)
+
+    _threading.Thread(target=_trabajo, daemon=True, name="keep-alive").start()
+    print(f"Keep-alive activo ({url}/salud, {h_ini}-{h_fin} h Colombia).")
+
+
+_keep_alive()
 
 
 # Al ejecutar python app.py se enciende el servidor

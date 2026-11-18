@@ -255,6 +255,14 @@ def index():
                            muni_ultimo=muni_ultimo)
 
 
+# Ping de keep-alive (anti cold-start de Render). Debe quedar lo más barato
+# posible: 200 al instante y SIN tocar la base de datos (cada consulta a
+# Turso cuesta una petición HTTP y lecturas del plan gratuito).
+@bp.route("/salud")
+def salud():
+    return "ok", 200, {"Cache-Control": "no-store"}
+
+
 # Las siguientes rutas /api/ entregan datos en formato json para que
 # los combos (selects) de la página se llenen solos
 @bp.route("/api/municipios")
@@ -1021,12 +1029,43 @@ def procesar_metadatos(t):
 # Turso cada consulta cuesta ~1 s; así las visitas repetidas son instantáneas.
 _hist_cache = {}
 _muni_ultimo_cache = {"valor": None, "ts": 0}
+_ultimo_informe_cache = {"valor": None, "ts": 0}
 
 
 def _invalidar_cache():
     _hist_cache.clear()
     _muni_ultimo_cache["valor"] = None
+    _ultimo_informe_cache["valor"] = None
     _detalle_cache.update(report_id=None, datos=None, cuentas=None, ts=0)
+
+
+def _ultimo_informe():
+    """IDs del último informe guardado (para enlazar directo desde el menú:
+    /general y /especiales hoy redirigen, y esa redirección es un viaje
+    HTTP de más en producción). Caché de 5 min, se invalida al cargar/borrar."""
+    ahora = time.time()
+    valor = _ultimo_informe_cache["valor"]
+    if valor is not None and (ahora - _ultimo_informe_cache["ts"]) < 300:
+        return valor
+    # Mismo filtro que usan /general y /especiales (general_data), solo el id:
+    # una consulta liviana apoyada en el índice updated_at.
+    nuevo_id = (db.session.query(Report.id)
+                .filter(Report.general_data.isnot(None))
+                .order_by(Report.updated_at.desc()).limit(1).scalar())
+    valor = {"general_id": nuevo_id, "especiales_id": nuevo_id}
+    _ultimo_informe_cache["valor"] = valor
+    _ultimo_informe_cache["ts"] = ahora
+    return valor
+
+
+@bp.app_context_processor
+def _ctx_ultimo_informe():
+    # Si la BD no está lista (arranque, pruebas) el menú cae a /general y
+    # /especiales, que ya saben redirigir con aviso.
+    try:
+        return {"ultimo_informe": _ultimo_informe()}
+    except Exception:
+        return {"ultimo_informe": {}}
 
 
 def _muni_ultimo():
@@ -1159,8 +1198,11 @@ def general_id(report_id):
         except Exception:
             page_data = None
     if page_data is None:
-        page_data = report.general_data
-    if page_data is None:
+        # Informes viejos sin page_data: el blob pasa por la caché de
+        # detalle (TTL 10 min) en vez de re-descargar/re-descomprimir
+        # los 33 MB de general_data en cada visita.
+        page_data = _datos_detalle(report_id)
+    if not page_data:
         flash("Este reporte no tiene datos procesados.", "warning")
         return redirect(url_for("main.historial"))
     municipio = report.municipio_nombre
@@ -1171,9 +1213,12 @@ def general_id(report_id):
     fyr = page_data.get("fyr") if isinstance(page_data, dict) else None
     fyr_orden = (page_data.get("fyr_orden") if isinstance(page_data, dict) else None)
     if es_emsa and (fyr is None or not fyr_orden):
+        # OJO: report.general_data NO se ha cargado (load_only); tocarlo
+        # dispararía un lazy load del blob de 33 MB. page_data ya trae
+        # facturacion/recaudo (de page_data o del blob cacheado).
         from core.fyr import FYR_ORDEN, fyr_agregar
-        fyr = fyr_agregar((report.general_data or {}).get("facturacion"),
-                           (report.general_data or {}).get("recaudo"))
+        fyr = fyr_agregar((page_data or {}).get("facturacion"),
+                           (page_data or {}).get("recaudo"))
         fyr_orden = list(FYR_ORDEN)
     return render_template("general.html", data=page_data, report_id=report_id,
                            municipio=municipio,

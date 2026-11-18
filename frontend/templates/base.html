@@ -21,6 +21,11 @@
       </button>
       <div class="collapse navbar-collapse" id="nav">
         <ul class="navbar-nav me-auto">
+          {# El menú enlaza DIRECTO al último informe: /general y /especiales
+             redirigen (1 viaje HTTP de más en producción). ultimo_informe
+             viene con caché de 5 min; si aún no hay informes, cae a la ruta
+             que redirige con aviso. #}
+          {% set ui = ultimo_informe or {} %}
           {% set ep = request.endpoint or '' %}
           <li class="nav-item">
             <a class="nav-link {{ 'nav-link-active' if ep in ['main.index', 'main.cargar', 'main.completar_metadatos', 'main.procesar_metadatos'] }}" href="{{ url_for('main.index') }}">
@@ -33,12 +38,12 @@
             </a>
           </li>
           <li class="nav-item">
-            <a class="nav-link {{ 'nav-link-active' if ep in ['main.general', 'main.general_id'] }}" href="{{ url_for('main.general') }}">
+            <a class="nav-link {{ 'nav-link-active' if ep in ['main.general', 'main.general_id'] }}" href="{{ url_for('main.general_id', report_id=ui.general_id) if ui.general_id else url_for('main.general') }}">
               <i class="bi bi-bar-chart-line"></i> Informe General
             </a>
           </li>
           <li class="nav-item">
-            <a class="nav-link {{ 'nav-link-active' if ep in ['main.especiales', 'main.especiales_id'] }}" href="{{ url_for('main.especiales') }}">
+            <a class="nav-link {{ 'nav-link-active' if ep in ['main.especiales', 'main.especiales_id'] }}" href="{{ url_for('main.especiales_id', report_id=ui.especiales_id) if ui.especiales_id else url_for('main.especiales') }}">
               <i class="bi bi-star-fill text-warning"></i> Informe Especiales
             </a>
           </li>

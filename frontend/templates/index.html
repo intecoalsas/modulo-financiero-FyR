@@ -71,11 +71,13 @@
               <span>Archivos procesados exitosamente. Los dashboards están disponibles.</span>
             </div>
             <div class="text-center mb-3">
-              <a href="{{ url_for('main.general') }}" class="btn btn-primary btn-lg me-2">
+              {# Enlace directo al último informe (sin la redirección de /general) #}
+              {% set ui = ultimo_informe or {} %}
+              <a href="{{ url_for('main.general_id', report_id=ui.general_id) if ui.general_id else url_for('main.general') }}" class="btn btn-primary btn-lg me-2">
                 <i class="bi bi-bar-chart-line"></i> Ver Informe General
               </a>
               {% if muni_ultimo != 'Villavicencio' %}
-              <a href="{{ url_for('main.especiales') }}" class="btn btn-warning btn-lg">
+              <a href="{{ url_for('main.especiales_id', report_id=ui.especiales_id) if ui.especiales_id else url_for('main.especiales') }}" class="btn btn-warning btn-lg">
                 <i class="bi bi-star-fill"></i> Ver Clientes Especiales
               </a>
               {% else %}
