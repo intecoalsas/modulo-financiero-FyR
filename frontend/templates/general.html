@@ -882,8 +882,20 @@ function paginador(cfg) {
     Object.keys(estado.exact).forEach(c => { e[c] = Array.from(estado.exact[c]); });
     fetch(API_DET + '?tipo=' + cfg.tipo + '&pagina=' + estado.pagina +
           '&por_pagina=1000&e=' + encodeURIComponent(JSON.stringify(e)))
-      .then(r => r.json())
-      .then(pintar)
+      .then(r => r.json().then(d => ({ st: r.status, d })))
+      .then(({ st, d }) => {
+        if (st === 202) {
+          // Informe viejo: el servidor prepara el detalle una sola vez
+          info.textContent = d.mensaje || 'Preparando el detalle de cuentas…';
+          cuerpo.innerHTML = '<tr><td colspan="' + cfg.cols + '" class="text-center text-muted">' +
+            '<span class="spinner-border spinner-border-sm me-2"></span>' +
+            escHtml(d.mensaje || 'Preparando el detalle de cuentas…') + '</td></tr>';
+          setTimeout(cargar, 8000);
+          return;
+        }
+        if (d.error) { info.textContent = d.error; return; }
+        pintar(d);
+      })
       .catch(() => { info.textContent = 'Error al cargar. Reintente.'; });
   }
   cfg.cargar = cargar;
@@ -954,6 +966,11 @@ const API_VAL = REPORT_ID ? '/api/valores/' + REPORT_ID : '/api/valores';
           '&q=' + encodeURIComponent(q || '') + '&limite=200')
       .then(r => r.json())
       .then(d => {
+        if (d.preparando || d.error) {
+          lista.innerHTML = '<div class="text-muted small px-2 py-1">' +
+            escHtml(d.mensaje || d.error) + '</div>';
+          return;
+        }
         const pg = PAGS[cfg.tabla];
         const elegidos = pg.estado.exact[col];
         cuenta.textContent = d.total > d.valores.length

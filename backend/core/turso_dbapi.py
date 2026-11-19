@@ -231,6 +231,34 @@ class Connection:
                 raise OperationalError(msg)
         return payload
 
+    @staticmethod
+    def _stmt(sql, params):
+        stmt = {"sql": sql}
+        if params is not None:
+            if isinstance(params, dict):
+                stmt["named_args"] = [{"name": k, "value": _to_turso_arg(v)}
+                                      for k, v in params.items()]
+            else:
+                seq = params if not isinstance(params, (str, bytes)) else [params]
+                stmt["args"] = [_to_turso_arg(p) for p in seq]
+        return stmt
+
+    def _execute_lote(self, sql, lista_params):
+        """Ejecuta la misma sentencia con varios parámetros en UNA petición."""
+        sql = sql.strip() if isinstance(sql, str) else sql
+        reqs = [{"type": "execute", "stmt": self._stmt(sql, p)} for p in lista_params]
+        if self._baton is not None:
+            data = self._pipeline(reqs, self._baton)
+            self._baton = data.get("baton")
+        else:
+            reqs.append({"type": "close"})
+            data = self._pipeline(reqs)
+        total = 0
+        for r in data.get("results") or []:
+            res = (r.get("response") or {}).get("result") or {}
+            total += res.get("affected_row_count", 0) or 0
+        return total
+
     def _execute(self, sql, params=None):
         sql = sql.strip() if isinstance(sql, str) else sql
         upper = (sql or "").upper().lstrip()
@@ -303,8 +331,16 @@ class Cursor:
         return self
 
     def executemany(self, sql, seq):
-        for params in seq:
-            self.execute(sql, params)
+        # Varias sentencias por petición HTTP (antes: una petición por fila,
+        # ~0,14 s cada una). Lotes de 25 para no armar cuerpos enormes.
+        seq = list(seq)
+        total = 0
+        for k in range(0, len(seq), 25):
+            total += self.connection._execute_lote(sql, seq[k:k + 25])
+        self.description = None
+        self.rowcount = total
+        self._rows = []
+        self._idx = 0
         return self
 
     def fetchone(self):

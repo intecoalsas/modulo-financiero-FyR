@@ -62,6 +62,7 @@ def medir_local():
     os.environ["DATABASE_URL"] = "sqlite:///" + os.path.abspath(ruta_db)
     os.environ.pop("TURSO_DATABASE_URL", None)
     os.environ.pop("TURSO_AUTH_TOKEN", None)
+    os.environ["DETALLE_MIGRAR_AUTO"] = "0"  # sin hilo de troceado al medir
     from sqlalchemy import event
     from sqlalchemy.engine import Engine
 

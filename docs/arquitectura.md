@@ -25,6 +25,13 @@
     `build_especiales_desde_archivos`, cartera (`ensure_cartera_anio`,
     `actualizar_cartera_mes`), guardado y texto ejecutivo.
   - `columnas.py`: alias, etiquetas, ejemplos y resolución de columnas.
+  - `detalle_store.py`: detalle de cuentas (unión facturación+recaudo) ya
+    calculado al guardar y troceado en la tabla `detalle_bloques` (bloques de
+    1.000 filas + una columna por campo). `/api/detalle`, `/api/valores` y la
+    descarga Excel leen de ahí y nunca cargan el blob `general_data` (~35 MB,
+    ~1 GB de RAM). Los informes viejos los trocea solo el servidor, en un
+    hilo en segundo plano que lee el blob por partes (~270 MB de RAM); la
+    página muestra "Preparando el detalle…" mientras tanto.
 - **Reportes** (`backend/reports/`): `excel_engine.py`, `word_engine.py`,
   `info_especiales_reader.py` (lee el libro de referencia con cartera,
   tarifas y descripción).

@@ -1297,6 +1297,22 @@ def save_report_to_db(municipio, comercializadora, anio, mes,
         report.page_data = None
     db.session.commit()
 
+    # Detalle de cuentas ya unido y troceado (tabla detalle_bloques): la
+    # página y sus filtros leen de ahí y nunca el blob de 35 MB. Si falla,
+    # la página cae al camino antiguo (leer general_data).
+    try:
+        from core import detalle_store
+        if general_data and (general_data.get("facturacion")
+                             or general_data.get("recaudo")):
+            detalle_store.guardar_cuentas(report.id,
+                                          general_data.get("facturacion"),
+                                          general_data.get("recaudo"))
+        else:
+            detalle_store.borrar(report.id)
+            db.session.commit()
+    except Exception:
+        db.session.rollback()
+
     # Se precalculan las alertas/anomalías del informe (idea #2) y el
     # resumen numérico mensual (ideas #3, #6, #9) para que la página y el
     # chat respondan al instante. Si falla, no interrumpe la carga.
@@ -1375,6 +1391,8 @@ def depurar_detalles_antiguos(comercializadora=None):
      .filter(Report.id.in_(viejos), Report.general_data.isnot(None))
      .update({Report.general_data: None, Report.detalle_purged: True},
              synchronize_session=False))
+    from core import detalle_store
+    detalle_store.borrar(viejos)
     db.session.commit()
     print(f"Depurado el detalle de {len(viejos)} informe(s) fuera de los últimos "
           f"{conservar} con detalle (ids: {viejos}).")

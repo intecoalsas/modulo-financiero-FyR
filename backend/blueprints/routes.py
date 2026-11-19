@@ -345,39 +345,10 @@ def _filas_de_reporte(report_id, tipo):
         return filas
 
 
-# Une facturación y recaudo en una sola fila por cuenta (listado único)
-def _unir_cuentas(facturacion, recaudo):
-    base = {}
-    orden = []
-    for r in facturacion or []:
-        k = str(r.get("Id_cliente"))
-        if k not in base:
-            base[k] = {"Id_cliente": r.get("Id_cliente"), "Nombre": r.get("Nombre"),
-                       "Clase": r.get("Clase"), "Sector": r.get("Sector"),
-                       "ImpuestoAP": 0.0, "Consumo$": 0.0, "ConsumokWh": 0.0,
-                       "ValorAP": 0.0}
-            orden.append(k)
-        b = base[k]
-        b["ImpuestoAP"] = float(b["ImpuestoAP"] or 0) + float(r.get("ImpuestoAP") or 0)
-        b["Consumo$"] = float(b["Consumo$"] or 0) + float(r.get("Consumo$") or 0)
-        b["ConsumokWh"] = float(b["ConsumokWh"] or 0) + float(r.get("ConsumokWh") or 0)
-    for r in recaudo or []:
-        k = str(r.get("Id_cliente"))
-        if k not in base:
-            base[k] = {"Id_cliente": r.get("Id_cliente"), "Nombre": r.get("Nombre"),
-                       "Clase": r.get("Clase"), "Sector": r.get("Sector"),
-                       "ImpuestoAP": 0.0, "Consumo$": 0.0, "ConsumokWh": 0.0,
-                       "ValorAP": 0.0}
-            orden.append(k)
-        b = base[k]
-        if not b["Nombre"]:
-            b["Nombre"] = r.get("Nombre")
-        if not b["Clase"]:
-            b["Clase"] = r.get("Clase")
-        if not b["Sector"]:
-            b["Sector"] = r.get("Sector")
-        b["ValorAP"] = float(b["ValorAP"] or 0) + float(r.get("ValorAP") or 0)
-    return [base[k] for k in orden]
+# Une facturación y recaudo en una sola fila por cuenta (listado único).
+# Vive en core/detalle_store.py (se usa también al guardar el informe).
+from core import detalle_store  # noqa: E402
+_unir_cuentas = detalle_store.unir_cuentas
 
 
 def _filas_detalle(general_data, tipo):
@@ -396,10 +367,46 @@ def _report_purged(report_id):
     return bool(r and r.detalle_purged)
 
 
+def _filtros_detalle(args, campos):
+    """Filtros de la tabla de detalle a partir de la URL.
+
+    f: {col: texto} -> el texto debe estar contenido en el valor.
+    e: {col: [valores]} -> chulos del panel Excel: la fila debe tener uno de
+       los valores elegidos; lista vacía = ninguno (no pasa ninguna fila)."""
+    import json as _json
+
+    def _leer(nombre):
+        try:
+            v = _json.loads(args.get(nombre, "") or "{}")
+        except (TypeError, ValueError):
+            v = {}
+        return v if isinstance(v, dict) else {}
+
+    def _col_ok(k):
+        return (str(k).lstrip("-").isdigit() and 0 <= int(k) < len(campos)
+                and campos[int(k)])
+
+    activos = {int(k): str(v).strip().lower() for k, v in _leer("f").items()
+               if str(v).strip() and _col_ok(k)}
+    exactos = {int(k): ([str(x) for x in v] if isinstance(v, list) else [str(v)])
+               for k, v in _leer("e").items() if _col_ok(k)}
+    return activos, exactos
+
+
+def _detalle_pendiente(report_id):
+    """202 mientras el servidor trocea el detalle de un informe viejo."""
+    if detalle_store.estado_pendiente(report_id) == "error":
+        return jsonify({"error": "No fue posible preparar el detalle de "
+                                 "cuentas de este informe."}), 500
+    detalle_store.pedir(report_id)
+    return jsonify({"preparando": True,
+                    "mensaje": "Preparando el detalle de cuentas (solo la "
+                               "primera vez; puede tardar 1 o 2 minutos)…"}), 202
+
+
 @bp.route("/api/detalle")
 @bp.route("/api/detalle/<int:report_id>")
 def api_detalle(report_id=None):
-    import json as _json
     tipo = request.args.get("tipo", "facturacion")
     if tipo not in _CAMPOS_DETALLE:
         tipo = "facturacion"
@@ -415,34 +422,34 @@ def api_detalle(report_id=None):
     except (TypeError, ValueError):
         por_pagina = 1000
     por_pagina = min(10000, max(50, por_pagina))
-    try:
-        filtros = _json.loads(request.args.get("f", "") or "{}")
-    except (TypeError, ValueError):
-        filtros = {}
-    if not isinstance(filtros, dict):
-        filtros = {}
+    campos = _CAMPOS_DETALLE[tipo]
+    activos, exactos = _filtros_detalle(request.args, campos)
 
+    # Camino rápido: detalle troceado en detalle_bloques (sin tocar el blob)
+    meta = detalle_store.meta(report_id, tipo) if report_id else None
+    if meta:
+        indices = detalle_store.indices_filtrados(report_id, tipo, activos, exactos)
+        total = meta["total"] if indices is None else len(indices)
+        paginas = max(1, (total + por_pagina - 1) // por_pagina)
+        pagina = min(pagina, paginas)
+        ini = (pagina - 1) * por_pagina
+        if indices is None:
+            filas_pag = detalle_store.rango(report_id, tipo, ini, por_pagina, meta)
+        else:
+            filas_pag = detalle_store.filas_por_indices(
+                report_id, tipo, indices[ini:ini + por_pagina], meta)
+        return jsonify({"total": total, "paginas": paginas, "pagina": pagina,
+                        "por_pagina": por_pagina, "filas": filas_pag})
+    if report_id and tipo == "cuentas":
+        # Informe viejo aún sin trocear: lo prepara el hilo del servidor
+        # (nunca se carga aquí el blob de 35 MB, que tumbaba la app)
+        return _detalle_pendiente(report_id)
+
+    # Camino antiguo (el informe recién generado, en memoria)
     if report_id:
         filas = _filas_de_reporte(report_id, tipo)
     else:
         filas = _filas_detalle(DATA.get("general") or {}, tipo)
-    campos = _CAMPOS_DETALLE[tipo]
-
-    # Filtro por columna: el texto debe estar contenido en el valor
-    activos = {int(k): str(v).strip().lower() for k, v in filtros.items()
-               if str(v).strip() and k.lstrip("-").isdigit()
-               and 0 <= int(k) < len(campos) and campos[int(k)]}
-    # Filtro exacto (chulos del panel Excel): la fila debe tener uno de
-    # los valores elegidos; lista vacía = ninguno (no pasa ninguna fila)
-    try:
-        exactos = _json.loads(request.args.get("e", "") or "{}")
-    except (TypeError, ValueError):
-        exactos = {}
-    if not isinstance(exactos, dict):
-        exactos = {}
-    exactos = {int(k): ([str(x) for x in v] if isinstance(v, list) else [str(v)])
-               for k, v in exactos.items()
-               if k.lstrip("-").isdigit() and 0 <= int(k) < len(campos) and campos[int(k)]}
 
     if activos or exactos:
         sel = []
@@ -508,7 +515,15 @@ def descargar_detalle_excel(report_id=None):
             flash("El detalle de cuentas de este informe ya fue depurado "
                   "(solo se conserva en los últimos informes).", "warning")
             return redirect(url_for("main.general_id", report_id=report_id))
-        general_data = _datos_detalle(report_id)
+        general_data = None
+        if not detalle_store.meta(report_id, tipo):
+            if tipo == "cuentas":
+                detalle_store.pedir(report_id)
+                flash("El detalle de cuentas de este informe se está preparando "
+                      "(solo la primera vez). Intente la descarga en 1 o 2 minutos.",
+                      "info")
+                return redirect(url_for("main.general_id", report_id=report_id))
+            general_data = _datos_detalle(report_id)
         fila_nom = (db.session.query(Report.anio, Report.mes,
                                      Municipio.nombre, Comercializadora.nombre)
                     .join(Comercializadora,
@@ -522,8 +537,14 @@ def descargar_detalle_excel(report_id=None):
         general_data = DATA.get("general") or {}
         fname = "Detalle_Cuentas.xlsx"
 
-    filas = _filas_detalle(general_data, tipo)
-    if not filas:
+    if general_data is None and report_id:
+        # Detalle troceado: se recorre por lotes de bloques (RAM acotada)
+        filas = detalle_store.iterar(report_id, tipo)
+        hay = detalle_store.meta(report_id, tipo)["total"] > 0
+    else:
+        filas = _filas_detalle(general_data, tipo)
+        hay = bool(filas)
+    if not hay:
         flash("Este informe no tiene detalle de cuentas para descargar.", "warning")
         dest = (url_for("main.general_id", report_id=report_id)
                 if report_id else url_for("main.general"))
@@ -533,12 +554,14 @@ def descargar_detalle_excel(report_id=None):
     wb = openpyxl.Workbook(write_only=True)
     ws = wb.create_sheet("Detalle de cuentas")
     ws.append(["#"] + [_ETIQUETAS_DETALLE.get(c, c) for c in campos])
+    n_filas = 0
     for i, r in enumerate(filas, 1):
         ws.append([i] + [r.get(c) for c in campos])
+        n_filas = i
     buf = BytesIO()
     wb.save(buf)
     buf.seek(0)
-    _auditar("descarga_detalle_excel", f"{fname} ({len(filas)} filas, tipo {tipo})")
+    _auditar("descarga_detalle_excel", f"{fname} ({n_filas} filas, tipo {tipo})")
     return send_file(buf, mimetype="application/vnd.openxmlformats-officedocument"
                                     ".spreadsheetml.sheet",
                      as_attachment=True, download_name=fname)
@@ -570,14 +593,26 @@ def api_valores(report_id=None):
     if not (0 <= col < len(campos)) or not campos[col]:
         return jsonify({"valores": [], "total": 0})
 
+    from collections import Counter
+    conteo = Counter()
+    if report_id and detalle_store.meta(report_id, tipo):
+        # Solo esa columna (ya como texto), nunca el blob completo
+        for v in detalle_store.columna(report_id, tipo, col):
+            if q and q not in v.lower():
+                continue
+            conteo[v] += 1
+        top = sorted(conteo.items(), key=lambda x: (-x[1], x[0]))[:limite]
+        return jsonify({"valores": [{"v": v, "n": n} for v, n in top],
+                        "total": len(conteo)})
+    if report_id and tipo == "cuentas":
+        return _detalle_pendiente(report_id)
+
     if report_id:
         filas = _filas_de_reporte(report_id, tipo)
     else:
         filas = _filas_detalle(DATA.get("general") or {}, tipo)
     campo = campos[col]
 
-    from collections import Counter
-    conteo = Counter()
     for r in filas:
         v = str(r.get(campo, "") or "")
         if q and q not in v.lower():
@@ -1037,6 +1072,7 @@ def _invalidar_cache():
     _muni_ultimo_cache["valor"] = None
     _ultimo_informe_cache["valor"] = None
     _detalle_cache.update(report_id=None, datos=None, cuentas=None, ts=0)
+    detalle_store.invalidar()
 
 
 def _ultimo_informe():
@@ -1909,6 +1945,7 @@ def eliminar_reporte(report_id):
     report = Report.query.get_or_404(report_id)
     _auditar("eliminar_reporte",
              f"{report.municipio_nombre} / {report.comercializadora_nombre} — {report.mes_nombre} {report.anio} (reporte #{report_id})")
+    detalle_store.borrar(report_id)
     db.session.delete(report)
     db.session.commit()
     _invalidar_cache()

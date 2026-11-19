@@ -472,6 +472,24 @@ def _keep_alive():
 _keep_alive()
 
 
+# ---------------------------------------------------------------------------
+# Troceado automático del detalle de cuentas (core/detalle_store.py): un hilo
+# del propio servidor prepara, uno por uno, los informes viejos que aún no
+# tienen su detalle troceado, leyendo el blob por partes (~200 MB de RAM en
+# vez de ~1 GB). Arranca con la primera petición (así no corre en el proceso
+# vigilante del modo debug ni en los scripts). DETALLE_MIGRAR_AUTO=0 lo apaga.
+# ---------------------------------------------------------------------------
+_troceado = {"listo": False}
+
+
+@app.before_request
+def _arrancar_troceado():
+    if not _troceado["listo"]:
+        _troceado["listo"] = True
+        from core import detalle_store
+        detalle_store.iniciar_migracion(app)
+
+
 # Al ejecutar python app.py se enciende el servidor
 if __name__ == "__main__":
     app.run(debug=True)

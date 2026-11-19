@@ -138,33 +138,29 @@ class TestPaginaGeneralDepurada:
 
 
 class TestCacheUnionCuentas:
-    def test_union_se_calcula_una_vez_por_informe(self, app, client, monkeypatch):
+    def test_informe_sin_bloques_responde_preparando(self, app, client, monkeypatch):
+        """Informe viejo sin bloques: 202 y a la cola, sin cargar el blob."""
         from blueprints import routes
+        from core import detalle_store
         r = _guardar("San Pedro", "Celsia", 2026, 7)
-        llamadas = {"n": 0}
-        original = routes._unir_cuentas
+        detalle_store.borrar(r.id)
+        db.session.commit()
 
-        def contador(f, rr):
-            llamadas["n"] += 1
-            return original(f, rr)
-
-        monkeypatch.setattr(routes, "_unir_cuentas", contador)
-        assert client.get(f"/api/detalle/{r.id}?tipo=cuentas&pagina=1&por_pagina=50").status_code == 200
-        primera = llamadas["n"]
-        assert primera == 1
-        # Cambio de pagina: la union sale de la cache (cero recorridos nuevos)
-        client.get(f"/api/detalle/{r.id}?tipo=cuentas&pagina=2&por_pagina=50")
-        assert llamadas["n"] == primera
-        # /api/valores tambien reutiliza la union cacheada
-        client.get(f"/api/valores/{r.id}?tipo=cuentas&col=1")
-        assert llamadas["n"] == primera
-        # Otro tipo (facturacion) usa el blob directo, sin tocar la union
-        client.get(f"/api/detalle/{r.id}?tipo=facturacion&pagina=1&por_pagina=50")
-        assert llamadas["n"] == primera
-        # Cambiar de informe invalida la union cacheada
-        r2 = _guardar("San Pedro", "Celsia", 2026, 8)
-        client.get(f"/api/detalle/{r2.id}?tipo=cuentas&pagina=1&por_pagina=50")
-        assert llamadas["n"] == primera + 1
+        def prohibido(*a, **k):
+            raise AssertionError("no debe cargar general_data")
+        monkeypatch.setattr(routes, "_datos_detalle", prohibido)
+        resp = client.get(f"/api/detalle/{r.id}?tipo=cuentas&pagina=1&por_pagina=50")
+        assert resp.status_code == 202 and resp.get_json()["preparando"]
+        assert client.get(f"/api/valores/{r.id}?tipo=cuentas&col=1").status_code == 202
+        assert client.get(f"/api/detalle/excel/{r.id}?tipo=cuentas").status_code == 302
+        assert r.id in detalle_store._mig_prioridad
+        assert r.id in detalle_store._pendientes()
+        # El hilo lo trocea (aquí se llama directo) y ya responde normal
+        detalle_store.trocear_desde_bd(r.id)
+        assert r.id not in detalle_store._pendientes()
+        d = client.get(f"/api/detalle/{r.id}?tipo=cuentas&pagina=1&por_pagina=50").get_json()
+        assert d["total"] == 1 and d["filas"][0]["ValorAP"] == 900
+        detalle_store._mig_prioridad.clear()
 
     def test_invalidar_cache_limpia_la_union(self, app, client):
         from blueprints import routes
@@ -173,3 +169,159 @@ class TestCacheUnionCuentas:
         routes._invalidar_cache()
         assert routes._detalle_cache["cuentas"] is None
         assert routes._detalle_cache["datos"] is None
+
+
+# ---- Detalle troceado (detalle_bloques): nunca se carga el blob ----
+def _gd_grande(n):
+    fact = [{"Id_cliente": f"C{i}", "Nombre": f"Cliente {i}",
+             "Clase": "Residencial" if i % 3 else "Comercial",
+             "Sector": "Urbano" if i % 2 else "Rural",
+             "ImpuestoAP": i, "Consumo$": 2 * i, "ConsumokWh": 0} for i in range(n)]
+    # recaudo con una cuenta repetida y una que no está en facturación
+    rec = [{"Id_cliente": "C1", "ValorAP": 5}, {"Id_cliente": "C1", "ValorAP": 7},
+           {"Id_cliente": "ZZ", "Nombre": "Solo recaudo", "Clase": "Oficial",
+            "ValorAP": 9}]
+    gd = dict(GD)
+    gd["facturacion"] = fact
+    gd["recaudo"] = rec
+    return gd
+
+
+class TestDetalleTroceado:
+    def _guardar_grande(self, n=2500):
+        return save_report_to_db("San Pedro", "Celsia", 2026, 7, _gd_grande(n), dict(ESP))
+
+    def _sin_blob(self, monkeypatch):
+        from blueprints import routes
+
+        def prohibido(*a, **k):
+            raise AssertionError("no debe cargar general_data")
+        monkeypatch.setattr(routes, "_datos_detalle", prohibido)
+
+    def test_guardar_crea_bloques(self, app):
+        from core import detalle_store
+        r = self._guardar_grande()
+        m = detalle_store.meta(r.id)
+        assert m["total"] == 2501 and m["tam"] == detalle_store.TAM
+
+    def test_mismo_resultado_que_camino_antiguo(self, app, client):
+        from core import detalle_store
+        from blueprints import routes
+        r = self._guardar_grande()
+        urls = [f"/api/detalle/{r.id}?tipo=cuentas&pagina=2&por_pagina=1000",
+                f"/api/detalle/{r.id}?tipo=cuentas&pagina=3&por_pagina=1000",
+                f"/api/detalle/{r.id}?tipo=cuentas&pagina=1&por_pagina=50&f=%7B%223%22%3A%22comer%22%7D",
+                f"/api/detalle/{r.id}?tipo=cuentas&pagina=1&por_pagina=50&e=%7B%224%22%3A%5B%22Rural%22%5D%7D",
+                f"/api/detalle/{r.id}?tipo=cuentas&e=%7B%224%22%3A%5B%5D%7D",
+                f"/api/valores/{r.id}?tipo=cuentas&col=3",
+                f"/api/valores/{r.id}?tipo=cuentas&col=2&q=client%2099"]
+        nuevos = [client.get(u).get_json() for u in urls]
+        # Referencia: el camino antiguo en memoria (/api/detalle sin id)
+        # con los mismos datos tras un viaje por JSON (como en la BD)
+        import json as _json
+        routes.DATA["general"] = _json.loads(_json.dumps(_gd_grande(2500)))
+        try:
+            viejos = [client.get(u.replace(f"/{r.id}?", "?")).get_json() for u in urls]
+        finally:
+            routes.DATA.pop("general", None)
+        assert nuevos == viejos
+        assert nuevos[1]["filas"][-1]["Id_cliente"] == "ZZ"
+        assert nuevos[4]["total"] == 0
+        # Trocear leyendo el blob por partes da exactamente lo mismo
+        detalle_store.trocear_desde_bd(r.id)
+        assert [client.get(u).get_json() for u in urls] == nuevos
+
+    def test_no_carga_el_blob(self, app, client, monkeypatch):
+        r = self._guardar_grande()
+        self._sin_blob(monkeypatch)
+        d = client.get(f"/api/detalle/{r.id}?tipo=cuentas&pagina=1&por_pagina=1000").get_json()
+        assert d["total"] == 2501 and len(d["filas"]) == 1000
+        assert d["filas"][1]["ValorAP"] == 12
+        assert client.get(f"/api/valores/{r.id}?tipo=cuentas&col=4").status_code == 200
+        resp = client.get(f"/api/detalle/excel/{r.id}?tipo=cuentas")
+        assert resp.status_code == 200 and resp.get_data()[:2] == b"PK"
+
+    def test_eliminar_y_depurar_borran_bloques(self, app, client):
+        from models import DetalleBloque
+        r = self._guardar_grande(10)
+        client.post(f"/reporte/{r.id}/eliminar")
+        assert DetalleBloque.query.filter_by(report_id=r.id).count() == 0
+        ids = [_guardar("San Pedro", "Celsia", 2026, mes).id for mes in range(1, 9)]
+        depurados = [i for i in ids if Report.query.get(i).detalle_purged]
+        assert depurados
+        assert DetalleBloque.query.filter(DetalleBloque.report_id.in_(depurados)).count() == 0
+
+
+def test_turso_executemany_agrupa_en_lotes(monkeypatch):
+    from core import turso_dbapi
+    conn = turso_dbapi.Connection(url="https://x.turso.io", auth_token="t")
+    enviados = []
+
+    def falso(reqs, baton=None):
+        enviados.append(reqs)
+        return {"results": [{"response": {"result": {"affected_row_count": 1}}}
+                            for r in reqs if r["type"] == "execute"]}
+    monkeypatch.setattr(conn, "_pipeline", falso)
+    cur = conn.cursor().executemany("INSERT INTO t VALUES (?)", [(i,) for i in range(60)])
+    assert len(enviados) == 3                      # 25 + 25 + 10
+    assert sum(1 for r in enviados[0] if r["type"] == "execute") == 25
+    assert enviados[0][-1] == {"type": "close"}
+    assert cur.rowcount == 60
+
+
+# ---- Lector del blob por partes (sin cargar el JSON entero) ----
+def _gz(obj):
+    import gzip as _gzip
+    import json as _json
+    return _gzip.compress(_json.dumps(obj, ensure_ascii=False).encode("utf-8"))
+
+
+class TestLectorPorPartes:
+    def test_igual_que_unir_cuentas_con_textos_raros(self):
+        from core import detalle_store as ds
+        fact = [{"Id_cliente": i, "Nombre": 'Ñandú "x" ]}{[, \ ' + "á" * (i % 7),
+                 "Clase": None if i % 5 == 0 else "Residencial", "Sector": "",
+                 "ImpuestoAP": i * 1.5, "Consumo$": None, "ConsumokWh": 3}
+                for i in range(3000)]
+        rec = [{"Id_cliente": i % 3100, "Nombre": "R", "Clase": "Oficial",
+                "Sector": "Rural", "ValorAP": 2} for i in range(0, 6200, 2)]
+        gd = {"clase_orig": [["a", 1]], "f": {"registros": [{"x": "]"}] * 50},
+              "vacia": [], "dic": {}, "num": -1.5e-3, "facturacion": fact,
+              "recaudo": rec, "r": {"registros": [1, 2, 3]}}
+        nombres = [c for c in ds.CAMPOS_CUENTAS if c]
+        esperado = [[d.get(c) for c in nombres] for d in ds.unir_cuentas(fact, rec)]
+        assert ds.unir_cuentas_desde_blob(_gz(gd)) == esperado
+
+    def test_recaudo_antes_que_facturacion(self):
+        from core import detalle_store as ds
+        fact = [{"Id_cliente": "A", "Nombre": "", "ImpuestoAP": 1}]
+        rec = [{"Id_cliente": "B", "Nombre": "Bee", "ValorAP": 1},
+               {"Id_cliente": "A", "Nombre": "Aa", "ValorAP": 2}]
+        nombres = [c for c in ds.CAMPOS_CUENTAS if c]
+        esperado = [[d.get(c) for c in nombres] for d in ds.unir_cuentas(fact, rec)]
+        assert ds.unir_cuentas_desde_blob(_gz({"recaudo": rec, "facturacion": fact})) == esperado
+
+    def test_buffer_chico_obliga_a_leer_por_trozos(self, monkeypatch):
+        """Con trozos de pocos bytes las filas quedan partidas entre lecturas."""
+        import io
+        import gzip as _gzip
+        from core import detalle_store as ds
+        fact = [{"Id_cliente": i, "Nombre": "n" * 40, "ImpuestoAP": 12345.678}
+                for i in range(200)]
+        original = ds._LectorJson._llenar
+
+        def llenar_chico(self, minimo=1 << 20):
+            # Solo el llenado "normal" es chico; los pedidos de más datos de
+            # valor() (fila incompleta) se respetan, como en producción
+            return original(self, 7 if minimo == 1 << 20 else minimo)
+        monkeypatch.setattr(ds._LectorJson, "_llenar", llenar_chico)
+        texto = io.TextIOWrapper(_gzip.GzipFile(fileobj=io.BytesIO(_gz({"facturacion": fact}))),
+                                 encoding="utf-8")
+        texto.read = (lambda f: (lambda n=-1: f(5)))(texto.read)
+        lector = ds._LectorJson(texto)
+        vistas = []
+        lector.esperar("{")
+        assert lector.valor() == "facturacion"
+        lector.esperar(":")
+        vistas = list(lector.elementos())
+        assert vistas == fact

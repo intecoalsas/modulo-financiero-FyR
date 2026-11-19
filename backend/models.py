@@ -285,3 +285,29 @@ class ClienteEspecial(db.Model):
 
     def __repr__(self):
         return f"<ClienteEspecial {self.id_cuenta} {self.nombre}>"
+
+
+# Detalle de cuentas precalculado y troceado (para no cargar nunca el blob
+# general_data de ~35 MB en el servidor web). Por cada informe se guarda:
+#   parte="meta" n=0  -> {"total", "tam", "campos"} (JSON plano)
+#   parte="fila" n=k  -> filas k*tam .. (k+1)*tam-1 como lista de listas
+#   parte="col"  n=i  -> la columna i (índice de _CAMPOS_DETALLE) entera,
+#                        ya como texto, para filtros y el panel tipo Excel
+# "fila" y "col" van en gzip+base64. Ver core/detalle_store.py.
+class DetalleBloque(db.Model):
+    __tablename__ = "detalle_bloques"
+
+    id = db.Column(db.Integer, primary_key=True)
+    report_id = db.Column(db.Integer, nullable=False)
+    tipo = db.Column(db.String(20), nullable=False, default="cuentas")
+    parte = db.Column(db.String(10), nullable=False)
+    n = db.Column(db.Integer, nullable=False, default=0)
+    datos = db.Column(db.Text, nullable=True)
+
+    __table_args__ = (
+        db.UniqueConstraint("report_id", "tipo", "parte", "n",
+                            name="uq_detalle_bloque"),
+    )
+
+    def __repr__(self):
+        return f"<DetalleBloque r{self.report_id} {self.tipo}/{self.parte}/{self.n}>"
